@@ -13,7 +13,7 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
 - Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
-- Product API with external ingress and NLP API with internal ingress
+- Core and NLP APIs with external HTTPS ingress for browser-based Swagger access
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
@@ -58,6 +58,15 @@ nlp_health_probes_enabled          = true
 The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush` plus `Container Apps Contributor` on their own app. The database deployment identity receives `AcrPush` plus `Container Apps Jobs Operator` on the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
+
+Both Container Apps have external HTTPS ingress. After applying Terraform, retrieve the browser-ready Swagger UI addresses with:
+
+```powershell
+terraform output -raw core_swagger_url
+terraform output -raw nlp_swagger_url
+```
+
+The application images must serve Swagger at `/swagger/index.html`. Development deployments already set `ASPNETCORE_ENVIRONMENT=Development`; if an application restricts Swagger to Development, keep that restriction explicit in the application repository before exposing a production deployment.
 
 Do not use application deployment identities for Terraform or at runtime. The Container Apps continue to use `id-olga-core-<environment>` and `id-olga-nlp-<environment>` for ACR pull and Key Vault access.
 

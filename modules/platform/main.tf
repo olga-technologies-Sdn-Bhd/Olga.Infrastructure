@@ -321,7 +321,9 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   ingress {
-    external_enabled = false
+    # The NLP API publishes its Swagger UI directly, so it must have public
+    # ingress just like the Core API to be reachable from a web browser.
+    external_enabled = true
     target_port      = var.nlp_application_delivery_enabled ? 8080 : 80
     transport        = "auto"
 

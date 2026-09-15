@@ -10,6 +10,20 @@ output "core_api_url" {
   value = module.platform.core_api_url
 }
 
+output "core_swagger_url" {
+  description = "Browser URL for the Core API Swagger UI."
+  value       = module.platform.core_swagger_url
+}
+
+output "nlp_api_url" {
+  value = module.platform.nlp_api_url
+}
+
+output "nlp_swagger_url" {
+  description = "Browser URL for the NLP API Swagger UI."
+  value       = module.platform.nlp_swagger_url
+}
+
 output "nlp_api_fqdn" {
   value = module.platform.nlp_api_fqdn
 }
