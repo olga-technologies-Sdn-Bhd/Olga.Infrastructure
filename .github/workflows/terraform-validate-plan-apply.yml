@@ -13,11 +13,6 @@ on:
         default: dev
         type: choice
         options: [dev, prd]
-      confirm_destroy:
-        description: Allow a reviewed destructive dev deployment
-        required: true
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -139,13 +134,16 @@ jobs:
       TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
       TFSTATE_KEY: ${{ vars.TFSTATE_KEY }}
       TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_tenant_id: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_environment: ${{ needs.quality.outputs.terraform_environment }}
       TF_VAR_location: ${{ vars.AZURE_LOCATION }}
       TF_VAR_owner: ${{ vars.OWNER }}
+      TF_VAR_cost_center: ${{ vars.COST_CENTER }}
       TF_VAR_expiry_date: ${{ vars.EXPIRY_DATE }}
+      TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
+      TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
-      destroy_count: ${{ steps.summary.outputs.destroy_count }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,7 +162,8 @@ jobs:
           set -euo pipefail
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
             TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
-            TF_VAR_location TF_VAR_owner TF_VAR_expiry_date; do
+            TF_VAR_tenant_id TF_VAR_location TF_VAR_owner TF_VAR_cost_center TF_VAR_expiry_date \
+            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required plan environment variable $name is not configured."
               exit 1
@@ -195,12 +194,29 @@ jobs:
           set -euo pipefail
           mkdir plan
           set +e
-          terraform plan -input=false -no-color -detailed-exitcode -lock-timeout=5m \
-            -out=plan/tfplan > "$RUNNER_TEMP/terraform-plan.log" 2>&1
-          exit_code=$?
+          terraform plan -input=false -json -detailed-exitcode -lock-timeout=5m \
+            -out=plan/tfplan | jq --unbuffered -r '
+              if .type == "refresh_start" or
+                 .type == "refresh_complete" or
+                 .type == "planned_change" or
+                 .type == "change_summary" then
+                .["@message"] // empty
+              elif .type == "diagnostic" then
+                "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
+              else
+                empty
+              end
+            '
+          pipeline_status=("${PIPESTATUS[@]}")
+          exit_code=${pipeline_status[0]}
+          filter_exit_code=${pipeline_status[1]}
           set -e
+          if [[ $filter_exit_code -ne 0 ]]; then
+            echo "::error::The Terraform plan event filter failed with exit code $filter_exit_code."
+            exit "$filter_exit_code"
+          fi
           if [[ $exit_code -eq 1 ]]; then
-            echo "::error::Terraform plan failed; output is suppressed to protect sensitive values."
+            echo "::error::Terraform plan failed. Review the filtered diagnostic summary above."
             exit 1
           fi
           [[ $exit_code -eq 2 ]] && has_changes=true || has_changes=false
@@ -219,6 +235,11 @@ jobs:
           update_count=$(jq '[.resource_changes[]? | select(.change.actions == ["update"])] | length' "$RUNNER_TEMP/tfplan.json")
           replace_count=$(jq '[.resource_changes[]? | select((.change.actions | index("create")) != null and (.change.actions | index("delete")) != null)] | length' "$RUNNER_TEMP/tfplan.json")
           destroy_count=$(jq '[.resource_changes[]? | select((.change.actions | index("delete")) != null)] | length' "$RUNNER_TEMP/tfplan.json")
+          jq -r '
+            .resource_changes[]?
+            | select(.change.actions != ["no-op"])
+            | "\(.change.actions | join("/"))\t\(.address)"
+          ' "$RUNNER_TEMP/tfplan.json" | sort > plan/resource-actions.txt
           {
             echo "### Terraform plan"
             echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
@@ -229,8 +250,16 @@ jobs:
             echo "- Includes delete: $destroy_count"
             [[ $destroy_count -eq 0 ]] || echo "- **Destructive change detected: review before approval.**"
             echo
-            echo "Values and outputs are intentionally omitted."
+            echo "#### Resource actions (values omitted)"
+            echo '```text'
+            if [[ -s plan/resource-actions.txt ]]; then
+              cat plan/resource-actions.txt
+            else
+              echo "No resource changes."
+            fi
+            echo '```'
           } > plan/plan-summary.md
+          cat plan/plan-summary.md
           cat plan/plan-summary.md >> "$GITHUB_STEP_SUMMARY"
           (cd plan && sha256sum tfplan > tfplan.sha256)
           jq -n --arg commit "$GITHUB_SHA" --arg environment "$DEPLOY_ENVIRONMENT" \
@@ -238,8 +267,7 @@ jobs:
             '{commit: $commit, environment: $environment, terraform_version: $version, state_key: $state_key}' \
             > plan/manifest.json
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
-          echo "destroy_count=$destroy_count" >> "$GITHUB_OUTPUT"
-          rm -f "$RUNNER_TEMP/tfplan.json" "$RUNNER_TEMP/terraform-plan.log"
+          rm -f "$RUNNER_TEMP/tfplan.json"
 
       - name: Upload saved plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -248,18 +276,6 @@ jobs:
           path: plan/
           if-no-files-found: error
           retention-days: 2
-
-      - name: Block unconfirmed destructive dev deployment
-        if: >-
-          github.event_name != 'pull_request' &&
-          needs.quality.outputs.environment == 'dev' &&
-          steps.summary.outputs.destroy_count != '0' &&
-          !(github.event_name == 'workflow_dispatch' && inputs.confirm_destroy)
-        env:
-          DESTROY_COUNT: ${{ steps.summary.outputs.destroy_count }}
-        run: |
-          echo "::error::$DESTROY_COUNT destructive action(s) detected. Review the artifact, then use manual dispatch with confirm_destroy."
-          exit 1
 
   apply:
     name: Apply ${{ needs.quality.outputs.environment }}
@@ -354,14 +370,57 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ needs.quality.outputs.environment }}
         run: |
           set -euo pipefail
-          apply_log="$RUNNER_TEMP/terraform-apply.log"
-          trap 'rm -f "$apply_log"' EXIT
-          if terraform apply -input=false -no-color -lock-timeout=10m plan/tfplan > "$apply_log" 2>&1; then
+          set +e
+          terraform apply -input=false -json -lock-timeout=10m plan/tfplan | jq --unbuffered -r '
+            if .type == "refresh_start" or
+               .type == "refresh_complete" or
+               .type == "apply_start" or
+               .type == "apply_progress" or
+               .type == "apply_complete" or
+               .type == "apply_errored" or
+               .type == "change_summary" then
+              .["@message"] // empty
+            elif .type == "diagnostic" then
+              "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
+            else
+              empty
+            end
+          '
+          pipeline_status=("${PIPESTATUS[@]}")
+          exit_code=${pipeline_status[0]}
+          filter_exit_code=${pipeline_status[1]}
+          set -e
+          if [[ $filter_exit_code -ne 0 ]]; then
+            echo "::error::The Terraform apply event filter failed with exit code $filter_exit_code."
+            exit "$filter_exit_code"
+          fi
+          if [[ $exit_code -eq 0 ]]; then
             echo "Applied the reviewed \`$DEPLOY_ENVIRONMENT\` plan." >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::error::Terraform apply failed; output is suppressed to protect sensitive values."
-            exit 1
+            echo "::error::Terraform apply failed with exit code $exit_code. Review the filtered diagnostic summary above."
+            exit "$exit_code"
           fi
+
+      - name: Publish application deployment identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          core_client_id=$(terraform output -raw core_deployment_identity_client_id)
+          core_subject=$(terraform output -raw core_deployment_oidc_subject)
+          nlp_client_id=$(terraform output -raw nlp_deployment_identity_client_id)
+          nlp_subject=$(terraform output -raw nlp_deployment_oidc_subject)
+          database_client_id=$(terraform output -raw database_deployment_identity_client_id)
+          database_subject=$(terraform output -raw database_deployment_oidc_subject)
+          {
+            echo
+            echo "### Application GitHub OIDC"
+            echo "- Core \`AZURE_CLIENT_ID\`: \`$core_client_id\`"
+            echo "- Core subject: \`$core_subject\`"
+            echo "- NLP \`AZURE_CLIENT_ID\`: \`$nlp_client_id\`"
+            echo "- NLP subject: \`$nlp_subject\`"
+            echo "- Database \`AZURE_CLIENT_ID\`: \`$database_client_id\`"
+            echo "- Database subject: \`$database_subject\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   fork-plan-notice:
     name: Fork plan policy

@@ -13,6 +13,14 @@ output "nlp_identity_id" { value = azurerm_user_assigned_identity.nlp.id }
 output "nlp_identity_principal_id" { value = azurerm_user_assigned_identity.nlp.principal_id }
 output "worker_identity_id" { value = azurerm_user_assigned_identity.worker.id }
 output "worker_identity_principal_id" { value = azurerm_user_assigned_identity.worker.principal_id }
+output "database_migration_identity_id" { value = azurerm_user_assigned_identity.database_migration.id }
+output "database_migration_identity_principal_id" { value = azurerm_user_assigned_identity.database_migration.principal_id }
+output "core_deploy_identity_client_id" { value = azurerm_user_assigned_identity.core_deploy.client_id }
+output "core_deploy_identity_principal_id" { value = azurerm_user_assigned_identity.core_deploy.principal_id }
+output "nlp_deploy_identity_client_id" { value = azurerm_user_assigned_identity.nlp_deploy.client_id }
+output "nlp_deploy_identity_principal_id" { value = azurerm_user_assigned_identity.nlp_deploy.principal_id }
+output "database_deploy_identity_client_id" { value = azurerm_user_assigned_identity.database_deploy.client_id }
+output "database_deploy_identity_principal_id" { value = azurerm_user_assigned_identity.database_deploy.principal_id }
 output "postgres_admin_password" {
   value     = random_password.postgres_admin.result
   sensitive = true

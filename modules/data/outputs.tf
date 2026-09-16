@@ -5,5 +5,4 @@ output "key_vault_uri" { value = azurerm_key_vault.this.vault_uri }
 output "postgres_connection_secret_uri" { value = "${azurerm_key_vault.this.vault_uri}secrets/${azapi_resource.postgres_connection.name}" }
 output "service_token_secret_uri" { value = "${azurerm_key_vault.this.vault_uri}secrets/${azapi_resource.service_token.name}" }
 output "storage_account_id" { value = azurerm_storage_account.this.id }
-output "servicebus_namespace_id" { value = azurerm_servicebus_namespace.this.id }
-
+output "servicebus_namespace_id" { value = try(azurerm_servicebus_namespace.this[0].id, null) }

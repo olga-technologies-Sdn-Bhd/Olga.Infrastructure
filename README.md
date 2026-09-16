@@ -9,11 +9,11 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - Resource group, mandatory tags, monthly budget alerts
 - Log Analytics and Application Insights
 - Azure Container Registry with managed-identity image pulls
-- VNet and delegated Container Apps/PostgreSQL subnets
-- PostgreSQL 17 Flexible Server, private DNS, 7-day development backup, `vector` and `pg_stat_statements`
+- VNet-integrated Container Apps and private-endpoint subnets
+- PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
-- Service Bus Standard queues with duplicate detection and dead-letter behavior
-- Product API with external ingress and NLP API with internal ingress
+- Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
+- Core and NLP APIs with external HTTPS ingress for browser-based Swagger access
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
@@ -26,14 +26,16 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 
 ## First development deployment
 
+The checked-in `olga-connect-dev.example.tfvars` file is configured for the `olga-connect-dev` subscription in tenant `9972baa6-9591-43d7-8b13-59da8e6f1a72`. Terraform does not load this example file automatically. For local deployment, copy it to `olga-connect-dev.auto.tfvars`, which Terraform loads automatically and Git ignores.
+
 ```powershell
 .\scripts\bootstrap-state.ps1 `
-  -SubscriptionId '<subscription-id>' `
+  -SubscriptionId 'e0bb013f-a8af-4d60-9c5b-0140b361f257' `
   -Location 'malaysiawest' `
   -StorageAccountName '<globally-unique-state-account>' > backend.hcl
 
-Copy-Item .\dev.example.auto.tfvars .\dev.auto.tfvars
-# Fill non-secret environment values in dev.auto.tfvars.
+Copy-Item .\olga-connect-dev.example.tfvars .\olga-connect-dev.auto.tfvars
+# Fill non-secret environment values in olga-connect-dev.auto.tfvars.
 
 terraform init -backend-config=backend.hcl
 terraform fmt -recursive
@@ -42,17 +44,39 @@ terraform plan -out=dev.tfplan
 terraform apply dev.tfplan
 ```
 
-The first apply uses Microsoft's public Container Apps bootstrap image. After building and pushing the API images, set immutable image references and enable ACR pulls:
+The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; Container Apps scaling from zero to one replica; and 0.1 GB/day telemetry caps. Service Bus, API Management, Static Web Apps, Azure OpenAI, Content Safety, SignalR, and Notification Hubs remain disabled.
+
+The first apply uses Microsoft's public Container Apps bootstrap image. Application repositories own subsequent immutable image revisions; Terraform owns identities, secrets, registry authentication, ingress, and ports. Core and NLP are independently configurable and both use port `8080` by default:
 
 ```hcl
-use_acr_images = true
-core_api_image = "<acr>.azurecr.io/olga-core-api:<commit-sha>"
-nlp_api_image  = "<acr>.azurecr.io/olga-nlp-api:<commit-sha>"
+core_application_delivery_enabled = true
+core_health_probes_enabled         = true
+nlp_application_delivery_enabled  = true
+nlp_health_probes_enabled          = true
 ```
+
+The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush` plus `Container Apps Contributor` on their own app. The database deployment identity receives `AcrPush` plus `Container Apps Jobs Operator` on the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
+
+The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
+
+Both Container Apps have external HTTPS ingress. After applying Terraform, retrieve the browser-ready Swagger UI addresses with:
+
+```powershell
+terraform output -raw core_swagger_url
+terraform output -raw nlp_swagger_url
+```
+
+The application images must serve Swagger at `/swagger/index.html`. Development deployments already set `ASPNETCORE_ENVIRONMENT=Development`; if an application restricts Swagger to Development, keep that restriction explicit in the application repository before exposing a production deployment.
+
+Do not use application deployment identities for Terraform or at runtime. The Container Apps continue to use `id-olga-core-<environment>` and `id-olga-nlp-<environment>` for ACR pull and Key Vault access.
 
 ## Database deployment
 
-Run `D:\OLGA\Projects\database\olga-database\deploy.ps1` from a VNet-connected runner because PostgreSQL has no public endpoint. Use the migration administrator only for schema deployment. The current APIs can bootstrap with the generated development connection secret, but workload-identity database authentication is required before test or production.
+PostgreSQL uses a private endpoint for Container Apps and the database migration job. Direct DBeaver administration is enabled only for the exact `/32` addresses declared per environment in `postgres-access.auto.tfvars`; there is no broad Azure-services firewall exception. Key Vault accepts the same `/32`, and the declared administrator receives read access only to the `postgresql-connection` secret. Use its `olga_migration_admin` credentials for unrestricted OLGA schema administration, including table and procedure DDL and DML. Microsoft Entra database authentication remains enabled for future identity-based access. Update the firewall entry and re-apply Terraform whenever the administrator's public IP changes.
+
+The database delivery job reads the migration-administrator connection from the private Key Vault through its dedicated managed identity; GitHub never receives the database password. The one-time baseline can be deployed through that job or the guarded DBeaver entry script. Later manual database changes remain an operator responsibility and should be recorded as reviewed SQL in the database repository before they are executed in production.
+
+Changing the already-created dev server from delegated-subnet networking to this private-endpoint/public-firewall model requires PostgreSQL replacement. Back up any required dev data and inspect the saved Terraform plan for the server replacement before approving apply. Production uses the same private-endpoint, exact-IP firewall, Entra administrator, and single-secret authorization model; replace the current administrator/IP values before creating prod if its approved operator or egress IP differs.
 
 ## Application readiness
 

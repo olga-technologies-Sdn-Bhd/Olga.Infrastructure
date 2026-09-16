@@ -5,6 +5,13 @@ resource "azurerm_container_app_environment" "this" {
   infrastructure_subnet_id   = var.container_apps_subnet_id
   log_analytics_workspace_id = var.log_analytics_workspace_id
   tags                       = var.tags
+
+  workload_profile {
+    name                  = "Consumption"
+    workload_profile_type = "Consumption"
+    minimum_count         = 0
+    maximum_count         = 0
+  }
 }
 
 resource "azurerm_role_assignment" "core_acr_pull" {
@@ -19,10 +26,100 @@ resource "azurerm_role_assignment" "nlp_acr_pull" {
   principal_id         = var.nlp_identity_principal_id
 }
 
+resource "azurerm_role_assignment" "core_deploy_acr_push" {
+  scope                            = var.acr_id
+  role_definition_name             = "AcrPush"
+  principal_id                     = var.core_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "nlp_deploy_acr_push" {
+  scope                            = var.acr_id
+  role_definition_name             = "AcrPush"
+  principal_id                     = var.nlp_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "database_migration_acr_pull" {
+  scope                = var.acr_id
+  role_definition_name = "AcrPull"
+  principal_id         = var.database_migration_identity_principal_id
+}
+
+resource "azurerm_role_assignment" "database_deploy_acr_push" {
+  scope                            = var.acr_id
+  role_definition_name             = "AcrPush"
+  principal_id                     = var.database_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_container_app_job" "database_migration" {
+  name                         = "job-olga-database-${var.environment}"
+  location                     = var.location
+  resource_group_name          = var.resource_group_name
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  workload_profile_name        = "Consumption"
+  replica_timeout_in_seconds   = 1800
+  replica_retry_limit          = 0
+  tags                         = var.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.database_migration_identity_id]
+  }
+
+  registry {
+    server   = var.acr_login_server
+    identity = var.database_migration_identity_id
+  }
+
+  secret {
+    name                = "postgresql"
+    key_vault_secret_id = var.postgres_connection_secret_uri
+    identity            = var.database_migration_identity_id
+  }
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  template {
+    container {
+      name    = "database-migration"
+      image   = "mcr.microsoft.com/azurelinux/base/core:3.0"
+      cpu     = 0.25
+      memory  = "0.5Gi"
+      command = ["/bin/sh", "-c"]
+      args    = ["echo 'No migration image supplied; refusing to run.' >&2; exit 1"]
+
+      env {
+        name        = "OLGA_POSTGRES_CONNECTION_STRING"
+        secret_name = "postgresql"
+      }
+
+      env {
+        name  = "SEED_MVP_POLICIES"
+        value = "0"
+      }
+    }
+  }
+
+  depends_on = [azurerm_role_assignment.database_migration_acr_pull]
+}
+
+resource "azurerm_role_assignment" "database_deploy_job" {
+  scope                            = azurerm_container_app_job.database_migration.id
+  role_definition_name             = "Container Apps Jobs Operator"
+  principal_id                     = var.database_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
 resource "azurerm_container_app" "core_api" {
   name                         = "ca-olga-core-api-${var.environment}"
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = var.resource_group_name
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = var.tags
 
@@ -44,7 +141,7 @@ resource "azurerm_container_app" "core_api" {
   }
 
   dynamic "registry" {
-    for_each = var.use_acr_images ? [1] : []
+    for_each = var.core_application_delivery_enabled ? [1] : []
     content {
       server   = var.acr_login_server
       identity = var.core_identity_id
@@ -53,17 +150,17 @@ resource "azurerm_container_app" "core_api" {
 
   template {
     min_replicas = 0
-    max_replicas = 2
+    max_replicas = 1
 
     container {
       name   = "core-api"
       image  = var.core_api_image
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.25
+      memory = "0.5Gi"
 
       env {
         name  = "ASPNETCORE_ENVIRONMENT"
-        value = "Development"
+        value = var.environment == "prod" ? "Production" : "Development"
       }
       env {
         name        = "ConnectionStrings__PostgreSql"
@@ -79,7 +176,7 @@ resource "azurerm_container_app" "core_api" {
       }
 
       dynamic "liveness_probe" {
-        for_each = var.use_acr_images ? [1] : []
+        for_each = var.core_health_probes_enabled ? [1] : []
         content {
           transport               = "HTTP"
           port                    = 8080
@@ -91,7 +188,7 @@ resource "azurerm_container_app" "core_api" {
       }
 
       dynamic "readiness_probe" {
-        for_each = var.use_acr_images ? [1] : []
+        for_each = var.core_health_probes_enabled ? [1] : []
         content {
           transport               = "HTTP"
           port                    = 8080
@@ -106,7 +203,7 @@ resource "azurerm_container_app" "core_api" {
 
   ingress {
     external_enabled = true
-    target_port      = 8080
+    target_port      = var.core_application_delivery_enabled ? 8080 : 80
     transport        = "auto"
 
     traffic_weight {
@@ -115,13 +212,25 @@ resource "azurerm_container_app" "core_api" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
   depends_on = [azurerm_role_assignment.core_acr_pull]
+}
+
+resource "azurerm_role_assignment" "core_deploy_container_app" {
+  scope                            = azurerm_container_app.core_api.id
+  role_definition_name             = "Container Apps Contributor"
+  principal_id                     = var.core_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
 }
 
 resource "azurerm_container_app" "nlp_api" {
   name                         = "ca-olga-nlp-api-${var.environment}"
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = var.resource_group_name
+  workload_profile_name        = "Consumption"
   revision_mode                = "Single"
   tags                         = var.tags
 
@@ -143,7 +252,7 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   dynamic "registry" {
-    for_each = var.use_acr_images ? [1] : []
+    for_each = var.nlp_application_delivery_enabled ? [1] : []
     content {
       server   = var.acr_login_server
       identity = var.nlp_identity_id
@@ -152,17 +261,17 @@ resource "azurerm_container_app" "nlp_api" {
 
   template {
     min_replicas = 0
-    max_replicas = 2
+    max_replicas = 1
 
     container {
       name   = "nlp-api"
       image  = var.nlp_api_image
-      cpu    = 0.5
-      memory = "1Gi"
+      cpu    = 0.25
+      memory = "0.5Gi"
 
       env {
         name  = "ASPNETCORE_ENVIRONMENT"
-        value = "Development"
+        value = var.environment == "prod" ? "Production" : "Development"
       }
       env {
         name        = "ConnectionStrings__PostgreSql"
@@ -186,7 +295,7 @@ resource "azurerm_container_app" "nlp_api" {
       }
 
       dynamic "liveness_probe" {
-        for_each = var.use_acr_images ? [1] : []
+        for_each = var.nlp_health_probes_enabled ? [1] : []
         content {
           transport               = "HTTP"
           port                    = 8080
@@ -198,7 +307,7 @@ resource "azurerm_container_app" "nlp_api" {
       }
 
       dynamic "readiness_probe" {
-        for_each = var.use_acr_images ? [1] : []
+        for_each = var.nlp_health_probes_enabled ? [1] : []
         content {
           transport               = "HTTP"
           port                    = 8080
@@ -212,8 +321,10 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   ingress {
-    external_enabled = false
-    target_port      = 8080
+    # The NLP API publishes its Swagger UI directly, so it must have public
+    # ingress just like the Core API to be reachable from a web browser.
+    external_enabled = true
+    target_port      = var.nlp_application_delivery_enabled ? 8080 : 80
     transport        = "auto"
 
     traffic_weight {
@@ -222,7 +333,18 @@ resource "azurerm_container_app" "nlp_api" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
   depends_on = [azurerm_role_assignment.nlp_acr_pull]
+}
+
+resource "azurerm_role_assignment" "nlp_deploy_container_app" {
+  scope                            = azurerm_container_app.nlp_api.id
+  role_definition_name             = "Container Apps Contributor"
+  principal_id                     = var.nlp_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
 }
 
 resource "azurerm_signalr_service" "this" {
@@ -332,4 +454,3 @@ resource "azurerm_static_web_app" "admin" {
   sku_size            = "Free"
   tags                = var.tags
 }
-

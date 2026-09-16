@@ -37,8 +37,14 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `TFSTATE_STORAGE_ACCOUNT` | Existing state storage account |
 | `TFSTATE_CONTAINER` | State container, typically `tfstate` |
 | `TFSTATE_KEY` | `olga/dev.tfstate` or `olga/prd.tfstate` |
+| `AZURE_LOCATION` | Azure deployment region, such as `malaysiawest` |
+| `OWNER` | Resource owner tag, such as `olga-platform` |
+| `COST_CENTER` | Cost allocation tag, such as `olga-connect` |
+| `EXPIRY_DATE` | Review/expiry date in `YYYY-MM-DD` format |
+| `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
+| `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
 
-The `dev-plan` and `prd-plan` environments also require `AZURE_LOCATION`, `OWNER`, and `EXPIRY_DATE`. Add future non-secret Terraform inputs as environment variables mapped to `TF_VAR_*`. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
+The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 
 ## Azure OIDC federation
 
@@ -52,6 +58,22 @@ repo:ORG/REPOSITORY:environment:prd
 ```
 
 Do not add secrets or broad repository/pull-request federated subjects to apply identities. GitHub Environment deployment-branch rules are part of this trust boundary.
+
+Application delivery uses separate identities managed by this Terraform project:
+
+- Core identity: `id-gh-olga-core-<environment>-deploy`
+- Core dev subject: `repo:Ol-gaTechnologies@306667340/Olga.Core@1358930841:environment:dev`
+- NLP identity: `id-gh-olga-nlp-<environment>-deploy`
+- NLP dev subject: `repo:Ol-gaTechnologies@306667340/olga-nlp-api@1356082344:environment:dev`
+- Database identity: `id-gh-olga-database-<environment>-deploy`
+- Database dev subject: `repo:Ol-gaTechnologies@306667340/olga-database@1356201535:environment:dev`
+- Registry permission: each identity has `AcrPush` scoped to the environment ACR
+- API deployment permission: each API identity has `Container Apps Contributor` scoped only to its own Container App
+- Database deployment permission: `Container Apps Jobs Operator` scoped only to the migration job
+
+After Terraform creates the identities, copy `core_deployment_identity_client_id`, `nlp_deployment_identity_client_id`, and `database_deployment_identity_client_id` to the matching repository GitHub Environment as `AZURE_CLIENT_ID`. Keep tenant, subscription, ACR login server, resource group, Container App, and migration-job settings aligned with the infrastructure outputs. Each application workflow owns image digest releases and supplies its revision suffix. The database workflow starts an exact image digest as a one-off job execution. Terraform intentionally ignores API image drift while continuing to manage all other Container App configuration; Azure generates a fresh suffix for any Terraform-driven template revision.
+
+Both Container Apps have liveness probes on `/health` and readiness probes on `/ready`, using port `8080`. The readiness endpoint verifies PostgreSQL connectivity. Keep these probes enabled in every environment after the real application images are deployed; bootstrap-only environments may temporarily disable them until application delivery is complete.
 
 ## Minimum Azure RBAC
 
@@ -78,9 +100,9 @@ Plan/apply command output is suppressed to avoid leaking sensitive values. The j
 
 ## Destructive changes and production approval
 
-The workflow counts every resource action containing `delete`, including replacements. Automatic destructive dev deployment fails after publishing its plan. An authorized operator must inspect the artifact and manually dispatch `dev` with `confirm_destroy=true`.
+The workflow counts every resource action containing `delete`, including replacements, and highlights the count in the job summary. Dev changes apply automatically after a successful plan, so review destructive changes during pull-request planning before merging to `develop`.
 
-Production always waits at the protected `prd` Environment after planning. Reviewers must inspect the job summary and saved plan before approval, especially when deletion is reported. The manual `confirm_destroy` input does not bypass production review. Reject unexpected destruction and correct the code; never reuse an older plan.
+Production always waits at the protected `prd` Environment after planning. Reviewers must inspect the job summary and saved plan before approval, especially when deletion is reported. Reject unexpected destruction and correct the code; never reuse an older plan.
 
 ## Branch protection recommendations
 
@@ -104,3 +126,5 @@ GitHub-hosted Ubuntu runners are appropriate while the state data plane and requ
 ## Maintenance
 
 Terraform, TFLint, the Azure TFLint plugin, and Trivy are pinned; downloaded scanner binaries are checksum-verified. GitHub Actions are pinned to immutable commit SHAs, and Dependabot checks them weekly. Promote upgrades through dev before production.
+
+The budget start date is selected as the first day of the creation month and then ignored for drift because Azure treats it as immutable. A routine plan must not replace a budget merely because Terraform was run again. Budget replacement is expected only when an operator intentionally changes a replacement-only budget property.
