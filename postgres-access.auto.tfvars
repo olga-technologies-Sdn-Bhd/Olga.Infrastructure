@@ -1,6 +1,11 @@
-# Non-secret PostgreSQL administrator access shared by local and GitHub Terraform runs.
+# Non-secret platform and PostgreSQL administrator access shared by local and GitHub Terraform runs.
 # Each firewall rule is deliberately a single public IPv4 address. Update the
 # relevant environment entry and apply Terraform when the administrator IP changes.
+platform_administrator_principal_ids_by_environment = {
+  dev  = ["12cb9c4b-2756-4084-9298-0ad4ebb0a06a"]
+  prod = ["12cb9c4b-2756-4084-9298-0ad4ebb0a06a"]
+}
+
 postgres_access_by_environment = {
   dev = {
     entra_admin = {

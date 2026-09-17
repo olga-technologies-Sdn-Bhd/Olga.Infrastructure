@@ -113,6 +113,21 @@ variable "postgres_access_by_environment" {
   }
 }
 
+variable "platform_administrator_principal_ids_by_environment" {
+  description = "Microsoft Entra object IDs that receive OLGA platform control-plane and service data-plane administrator access, keyed by Terraform environment."
+  type        = map(set(string))
+  default     = {}
+
+  validation {
+    condition = alltrue(flatten([
+      for principal_ids in values(var.platform_administrator_principal_ids_by_environment) : [
+        for principal_id in principal_ids : can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", principal_id))
+      ]
+    ]))
+    error_message = "platform administrator principal IDs must be Microsoft Entra object-ID UUIDs."
+  }
+}
+
 variable "core_api_image" {
   description = "Core API bootstrap image used when the Container App is created. The Core delivery workflow owns later image revisions."
   type        = string

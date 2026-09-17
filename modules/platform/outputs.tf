@@ -5,3 +5,7 @@ output "nlp_swagger_url" { value = "https://${azurerm_container_app.nlp_api.late
 output "nlp_api_fqdn" { value = azurerm_container_app.nlp_api.latest_revision_fqdn }
 output "container_apps_environment_id" { value = azurerm_container_app_environment.this.id }
 output "database_migration_job_name" { value = azurerm_container_app_job.database_migration.name }
+output "signalr_service_id" { value = try(azurerm_signalr_service.this[0].id, null) }
+output "notification_hub_namespace_id" { value = try(azurerm_notification_hub_namespace.this[0].id, null) }
+output "content_safety_account_id" { value = try(azurerm_cognitive_account.content_safety[0].id, null) }
+output "openai_account_id" { value = try(azurerm_cognitive_account.openai[0].id, null) }

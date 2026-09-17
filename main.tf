@@ -14,6 +14,96 @@ module "foundation" {
   database_deploy_oidc_subject = local.database_deploy_oidc_subject
 }
 
+# Contributor supplies control-plane administration across every module in this
+# environment. Azure service data planes use separate assignments below.
+resource "azurerm_role_assignment" "platform_administrator_contributor" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.foundation.resource_group_id
+  role_definition_name = "Contributor"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_monitoring_reader" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.foundation.resource_group_id
+  role_definition_name = "Monitoring Reader"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_acr_push" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.foundation.acr_id
+  role_definition_name = "AcrPush"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_acr_delete" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.foundation.acr_id
+  role_definition_name = "AcrDelete"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_key_vault" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.data.key_vault_id
+  role_definition_name = "Key Vault Administrator"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_blob_data" {
+  for_each = local.platform_administrator_principal_ids
+
+  scope                = module.data.storage_account_id
+  role_definition_name = "Storage Blob Data Owner"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_servicebus_data" {
+  for_each = var.enable_service_bus ? local.platform_administrator_principal_ids : toset([])
+
+  scope                = module.data.servicebus_namespace_id
+  role_definition_name = "Azure Service Bus Data Owner"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_content_safety" {
+  for_each = var.enable_content_safety ? local.platform_administrator_principal_ids : toset([])
+
+  scope                = module.platform.content_safety_account_id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_openai" {
+  for_each = var.enable_azure_openai ? local.platform_administrator_principal_ids : toset([])
+
+  scope                = module.platform.openai_account_id
+  role_definition_name = "Cognitive Services OpenAI Contributor"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_signalr" {
+  for_each = var.enable_signalr ? local.platform_administrator_principal_ids : toset([])
+
+  scope                = module.platform.signalr_service_id
+  role_definition_name = "SignalR Service Owner"
+  principal_id         = each.value
+}
+
+resource "azurerm_role_assignment" "platform_administrator_notification_hubs" {
+  for_each = var.enable_notification_hubs ? local.platform_administrator_principal_ids : toset([])
+
+  scope                = module.platform.notification_hub_namespace_id
+  role_definition_name = "Azure Notification Hubs Data Owner"
+  principal_id         = each.value
+}
+
 module "network" {
   source = "./modules/network"
 

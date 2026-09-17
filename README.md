@@ -24,9 +24,11 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - Contributor plus User Access Administrator permissions for the initial deployment
 - Remote-state storage bootstrapped once
 
+Terraform grants every principal listed for the active environment in `platform_administrator_principal_ids_by_environment` resource-group `Contributor` plus the data-plane roles required by the provisioned services: monitoring read, ACR push/delete, Key Vault administration, Blob data ownership, and—when enabled—Service Bus, Content Safety, Azure OpenAI, SignalR, and Notification Hubs administration. PostgreSQL data access remains controlled by `postgres_access_by_environment.entra_admin`. These assignments do not bypass private endpoints, service firewalls, or IP allowlists. The Terraform deployment identity needs `User Access Administrator` (or `Owner`) to create the assignments.
+
 ## First development deployment
 
-The checked-in `olga-connect-dev.example.tfvars` file is configured for the `olga-connect-dev` subscription in tenant `9972baa6-9591-43d7-8b13-59da8e6f1a72`. Terraform does not load this example file automatically. For local deployment, copy it to `olga-connect-dev.auto.tfvars`, which Terraform loads automatically and Git ignores.
+For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `
@@ -34,8 +36,7 @@ The checked-in `olga-connect-dev.example.tfvars` file is configured for the `olg
   -Location 'malaysiawest' `
   -StorageAccountName '<globally-unique-state-account>' > backend.hcl
 
-Copy-Item .\olga-connect-dev.example.tfvars .\olga-connect-dev.auto.tfvars
-# Fill non-secret environment values in olga-connect-dev.auto.tfvars.
+# Create olga-connect-dev.auto.tfvars and fill its required non-secret values.
 
 terraform init -backend-config=backend.hcl
 terraform fmt -recursive
@@ -72,7 +73,7 @@ Do not use application deployment identities for Terraform or at runtime. The Co
 
 ## Database deployment
 
-PostgreSQL uses a private endpoint for Container Apps and the database migration job. Direct DBeaver administration is enabled only for the exact `/32` addresses declared per environment in `postgres-access.auto.tfvars`; there is no broad Azure-services firewall exception. Key Vault accepts the same `/32`, and the declared administrator receives read access only to the `postgresql-connection` secret. Use its `olga_migration_admin` credentials for unrestricted OLGA schema administration, including table and procedure DDL and DML. Microsoft Entra database authentication remains enabled for future identity-based access. Update the firewall entry and re-apply Terraform whenever the administrator's public IP changes.
+PostgreSQL uses a private endpoint for Container Apps and the database migration job. Direct DBeaver administration is enabled only for the exact `/32` addresses declared per environment in `postgres-access.auto.tfvars`; there is no broad Azure-services firewall exception. Key Vault accepts the same `/32`; platform administrators receive Key Vault data-plane administration, while the PostgreSQL administrator retains explicit read access to the `postgresql-connection` secret. Use its `olga_migration_admin` credentials for unrestricted OLGA schema administration, including table and procedure DDL and DML. Microsoft Entra database authentication remains enabled for future identity-based access. Update the firewall entry and re-apply Terraform whenever the administrator's public IP changes.
 
 The database delivery job reads the migration-administrator connection from the private Key Vault through its dedicated managed identity; GitHub never receives the database password. The one-time baseline can be deployed through that job or the guarded DBeaver entry script. Later manual database changes remain an operator responsibility and should be recorded as reviewed SQL in the database repository before they are executed in production.
 
