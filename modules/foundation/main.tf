@@ -161,12 +161,6 @@ resource "random_password" "postgres_admin" {
   override_special = "!#%*+-.:=?@_"
 }
 
-resource "random_password" "postgres_dml" {
-  length           = 32
-  special          = true
-  override_special = "!#%*+-.:=?@_"
-}
-
 resource "azurerm_consumption_budget_resource_group" "this" {
   count = length(var.budget_alert_emails) > 0 ? 1 : 0
 

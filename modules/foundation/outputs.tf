@@ -25,7 +25,3 @@ output "postgres_admin_password" {
   value     = random_password.postgres_admin.result
   sensitive = true
 }
-output "postgres_dml_password" {
-  value     = random_password.postgres_dml.result
-  sensitive = true
-}

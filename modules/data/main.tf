@@ -162,52 +162,17 @@ resource "random_password" "service_token" {
 }
 
 locals {
-  postgres_migration_connection_string = sensitive("Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_admin_username};Password=${var.postgres_admin_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=5")
-  postgres_dml_connection_string       = sensitive("Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_dml_username};Password=${var.postgres_dml_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=${var.postgres_dml_max_pool_size}")
+  postgres_connection_string = "Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_admin_username};Password=${var.postgres_admin_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=25"
 }
 
 # Secrets use the ARM control plane so private-only vaults do not require a public CI runner exception.
-resource "azapi_resource" "postgres_migration_connection" {
+resource "azapi_resource" "postgres_connection" {
   type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
   parent_id = azurerm_key_vault.this.id
-  name      = "postgresql-migration-connection"
+  name      = "postgresql-connection"
   body = {
     properties = {
-      value = local.postgres_migration_connection_string
-    }
-  }
-}
-
-resource "azapi_resource" "postgres_dml_connection" {
-  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
-  parent_id = azurerm_key_vault.this.id
-  name      = "postgresql-dml-connection"
-  body = {
-    properties = {
-      value = local.postgres_dml_connection_string
-    }
-  }
-}
-
-# The migration image consumes these bootstrap-only values to provision and rotate the DML login.
-resource "azapi_resource" "postgres_dml_username" {
-  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
-  parent_id = azurerm_key_vault.this.id
-  name      = "postgresql-dml-username"
-  body = {
-    properties = {
-      value = var.postgres_dml_username
-    }
-  }
-}
-
-resource "azapi_resource" "postgres_dml_password" {
-  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
-  parent_id = azurerm_key_vault.this.id
-  name      = "postgresql-dml-password"
-  body = {
-    properties = {
-      value = sensitive(var.postgres_dml_password)
+      value = local.postgres_connection_string
     }
   }
 }
@@ -215,45 +180,9 @@ resource "azapi_resource" "postgres_dml_password" {
 resource "azurerm_role_assignment" "database_administrator_connection_secret_reader" {
   count = var.postgres_entra_admin == null ? 0 : 1
 
-  scope                = azapi_resource.postgres_migration_connection.id
+  scope                = azapi_resource.postgres_connection.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = var.postgres_entra_admin.object_id
-}
-
-resource "azurerm_role_assignment" "database_migration_connection_secret_reader" {
-  scope                            = azapi_resource.postgres_migration_connection.id
-  role_definition_name             = "Key Vault Secrets User"
-  principal_id                     = var.database_migration_identity_principal_id
-  skip_service_principal_aad_check = true
-}
-
-locals {
-  dml_connection_secret_readers = {
-    core   = var.core_identity_principal_id
-    nlp    = var.nlp_identity_principal_id
-    worker = var.worker_identity_principal_id
-  }
-}
-
-resource "azurerm_role_assignment" "postgres_dml_connection_secret_reader" {
-  for_each = local.dml_connection_secret_readers
-
-  scope                            = azapi_resource.postgres_dml_connection.id
-  role_definition_name             = "Key Vault Secrets User"
-  principal_id                     = each.value
-  skip_service_principal_aad_check = true
-}
-
-resource "azurerm_role_assignment" "database_migration_dml_bootstrap_secret_reader" {
-  for_each = {
-    username = azapi_resource.postgres_dml_username.id
-    password = azapi_resource.postgres_dml_password.id
-  }
-
-  scope                            = each.value
-  role_definition_name             = "Key Vault Secrets User"
-  principal_id                     = var.database_migration_identity_principal_id
-  skip_service_principal_aad_check = true
 }
 
 resource "azapi_resource" "service_token" {
@@ -373,12 +302,15 @@ locals {
     nlp    = var.nlp_identity_principal_id
     worker = var.worker_identity_principal_id
   }
+  key_vault_principals = merge(local.application_principals, {
+    database_migration = var.database_migration_identity_principal_id
+  })
 }
 
-resource "azurerm_role_assignment" "service_token_secret_reader" {
-  for_each = local.application_principals
+resource "azurerm_role_assignment" "key_vault_secrets_user" {
+  for_each = local.key_vault_principals
 
-  scope                            = azapi_resource.service_token.id
+  scope                            = azurerm_key_vault.this.id
   role_definition_name             = "Key Vault Secrets User"
   principal_id                     = each.value
   skip_service_principal_aad_check = true

@@ -10,12 +10,6 @@ variable "postgres_admin_password" {
   type      = string
   sensitive = true
 }
-variable "postgres_dml_username" { type = string }
-variable "postgres_dml_password" {
-  type      = string
-  sensitive = true
-}
-variable "postgres_dml_max_pool_size" { type = number }
 variable "postgres_sku_name" { type = string }
 variable "postgres_storage_mb" { type = number }
 variable "postgres_allowed_extensions" { type = list(string) }

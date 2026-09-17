@@ -40,16 +40,6 @@ output "key_vault_uri" {
   value = module.data.key_vault_uri
 }
 
-output "postgres_migration_connection_secret_uri" {
-  description = "Versionless Key Vault URI for the migration-administrator connection secret."
-  value       = module.data.postgres_migration_connection_secret_uri
-}
-
-output "postgres_dml_connection_secret_uri" {
-  description = "Versionless Key Vault URI for the runtime DML connection secret."
-  value       = module.data.postgres_dml_connection_secret_uri
-}
-
 output "core_deployment_identity_client_id" {
   description = "Set this as AZURE_CLIENT_ID in the Core repository GitHub environment."
   value       = module.foundation.core_deploy_identity_client_id

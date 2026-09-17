@@ -11,10 +11,7 @@ variable "application_insights_connection_string" {
 }
 variable "acr_id" { type = string }
 variable "acr_login_server" { type = string }
-variable "postgres_migration_connection_secret_uri" { type = string }
-variable "postgres_dml_connection_secret_uri" { type = string }
-variable "postgres_dml_username_secret_uri" { type = string }
-variable "postgres_dml_password_secret_uri" { type = string }
+variable "postgres_connection_secret_uri" { type = string }
 variable "service_token_secret_uri" { type = string }
 variable "core_identity_id" { type = string }
 variable "core_identity_principal_id" { type = string }

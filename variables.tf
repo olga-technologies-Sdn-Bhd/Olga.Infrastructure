@@ -49,36 +49,8 @@ variable "budget_alert_emails" {
 }
 
 variable "postgres_admin_username" {
-  description = "PostgreSQL Flexible Server administrator and database migration login."
   type    = string
   default = "olga_migration_admin"
-
-  validation {
-    condition     = var.postgres_admin_username == "olga_migration_admin"
-    error_message = "postgres_admin_username must remain olga_migration_admin."
-  }
-}
-
-variable "postgres_dml_username" {
-  description = "Dedicated PostgreSQL login used by APIs and workers for DML."
-  type        = string
-  default     = "olga_dml_user"
-
-  validation {
-    condition     = var.postgres_dml_username == "olga_dml_user"
-    error_message = "postgres_dml_username must remain olga_dml_user."
-  }
-}
-
-variable "postgres_dml_max_pool_size" {
-  description = "Maximum PostgreSQL connection-pool size for each runtime service."
-  type        = number
-  default     = 25
-
-  validation {
-    condition     = var.postgres_dml_max_pool_size >= 1 && var.postgres_dml_max_pool_size <= 100
-    error_message = "postgres_dml_max_pool_size must be between 1 and 100."
-  }
 }
 
 variable "postgres_sku_name" {
