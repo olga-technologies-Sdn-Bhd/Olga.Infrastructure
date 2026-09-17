@@ -9,6 +9,9 @@ expiry_date         = "2026-12-01"
 budget_amount_usd   = 50
 budget_alert_emails = ["sreedharan@ol-ga.com"]
 
+# Database credentials are generated independently in each environment and are never supplied in tfvars.
+# The fixed logins are olga_migration_admin for migrations and olga_dml_user for API/worker DML.
+
 # Enable only after the corresponding regional availability, quota, and product decisions are approved.
 enable_azure_openai         = false
 enable_api_management       = false

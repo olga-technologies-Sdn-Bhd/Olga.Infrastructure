@@ -74,8 +74,20 @@ resource "azurerm_container_app_job" "database_migration" {
   }
 
   secret {
-    name                = "postgresql"
-    key_vault_secret_id = var.postgres_connection_secret_uri
+    name                = "postgresql-migration"
+    key_vault_secret_id = var.postgres_migration_connection_secret_uri
+    identity            = var.database_migration_identity_id
+  }
+
+  secret {
+    name                = "postgresql-dml-username"
+    key_vault_secret_id = var.postgres_dml_username_secret_uri
+    identity            = var.database_migration_identity_id
+  }
+
+  secret {
+    name                = "postgresql-dml-password"
+    key_vault_secret_id = var.postgres_dml_password_secret_uri
     identity            = var.database_migration_identity_id
   }
 
@@ -95,7 +107,17 @@ resource "azurerm_container_app_job" "database_migration" {
 
       env {
         name        = "OLGA_POSTGRES_CONNECTION_STRING"
-        secret_name = "postgresql"
+        secret_name = "postgresql-migration"
+      }
+
+      env {
+        name        = "OLGA_DML_USERNAME"
+        secret_name = "postgresql-dml-username"
+      }
+
+      env {
+        name        = "OLGA_DML_PASSWORD"
+        secret_name = "postgresql-dml-password"
       }
 
       env {
@@ -130,7 +152,7 @@ resource "azurerm_container_app" "core_api" {
 
   secret {
     name                = "postgresql"
-    key_vault_secret_id = var.postgres_connection_secret_uri
+    key_vault_secret_id = var.postgres_dml_connection_secret_uri
     identity            = var.core_identity_id
   }
 
@@ -241,7 +263,7 @@ resource "azurerm_container_app" "nlp_api" {
 
   secret {
     name                = "postgresql"
-    key_vault_secret_id = var.postgres_connection_secret_uri
+    key_vault_secret_id = var.postgres_dml_connection_secret_uri
     identity            = var.nlp_identity_id
   }
 

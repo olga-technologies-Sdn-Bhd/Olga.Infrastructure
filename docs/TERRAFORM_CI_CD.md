@@ -98,6 +98,8 @@ Saved-plan artifacts include the binary plan, a SHA-256 checksum, provenance met
 
 Plan/apply command output is suppressed to avoid leaking sensitive values. The job summary contains only environment, commit, and action counts.
 
+PostgreSQL administrator and DML passwords are generated independently inside each environment's Terraform state. CI must not accept them as variables, print them, or export them to application workflows. Safe outputs expose only versionless Key Vault secret URIs.
+
 ## Destructive changes and production approval
 
 The workflow counts every resource action containing `delete`, including replacements, and highlights the count in the job summary. Dev changes apply automatically after a successful plan, so review destructive changes during pull-request planning before merging to `develop`.

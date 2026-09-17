@@ -35,6 +35,9 @@ module "data" {
   virtual_network_id                       = module.network.virtual_network_id
   postgres_admin_username                  = var.postgres_admin_username
   postgres_admin_password                  = module.foundation.postgres_admin_password
+  postgres_dml_username                    = var.postgres_dml_username
+  postgres_dml_password                    = module.foundation.postgres_dml_password
+  postgres_dml_max_pool_size               = var.postgres_dml_max_pool_size
   postgres_sku_name                        = var.postgres_sku_name
   postgres_storage_mb                      = var.postgres_storage_mb
   postgres_allowed_extensions              = var.postgres_allowed_extensions
@@ -61,7 +64,10 @@ module "platform" {
   application_insights_connection_string   = module.foundation.application_insights_connection_string
   acr_id                                   = module.foundation.acr_id
   acr_login_server                         = module.foundation.acr_login_server
-  postgres_connection_secret_uri           = module.data.postgres_connection_secret_uri
+  postgres_migration_connection_secret_uri = module.data.postgres_migration_connection_secret_uri
+  postgres_dml_connection_secret_uri       = module.data.postgres_dml_connection_secret_uri
+  postgres_dml_username_secret_uri         = module.data.postgres_dml_username_secret_uri
+  postgres_dml_password_secret_uri         = module.data.postgres_dml_password_secret_uri
   service_token_secret_uri                 = module.data.service_token_secret_uri
   core_identity_id                         = module.foundation.core_identity_id
   core_identity_principal_id               = module.foundation.core_identity_principal_id
