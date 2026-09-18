@@ -8,7 +8,7 @@ Core API, NLP API, Swagger, health endpoints, and existing development identity 
 
 ## Ownership and limitations
 
-The isolated `bootstrap/external-tenant` Terraform root creates the External ID tenant resource through the repository's existing AzAPI provider. It uses Microsoft's preview `Microsoft.AzureActiveDirectory/ciamDirectories@2023-05-17-preview` resource, separate state per environment, and `prevent_destroy`. Dev creation is exposed through the manual-only `.github/workflows/bootstrap-dev-external-id.yml` workflow; it does not run on pushes or pull requests.
+The isolated `bootstrap/external-tenant` Terraform root creates the External ID tenant resource through the repository's existing AzAPI provider. It uses Microsoft's preview `Microsoft.AzureActiveDirectory/ciamDirectories@2023-05-17-preview` resource, separate state per environment, and `prevent_destroy`. The manual-only `.github/workflows/bootstrap-dev-external-id.yml` workflow produces a guarded dev plan and does not run on pushes or pull requests. Microsoft requires a delegated user token for initial tenant creation, so GitHub OIDC cannot perform the apply; an authorized user performs that one-time apply locally.
 
 Email OTP, user flows, application registrations, API permissions, and administrator consent are directory operations and remain one-time administrator steps after the tenant exists. The main Terraform root accepts their resulting non-secret IDs and emits mobile and future Core configuration. When repeating a directory step, search for and update the exact name; do not create a duplicate object.
 
@@ -201,11 +201,11 @@ tflint --recursive --format compact
 trivy config --exit-code 1 --severity HIGH,CRITICAL --format table .
 ```
 
-Create the dev External ID tenant first. The preferred path is GitHub Actions: open **Actions**, select **External ID - Bootstrap Dev Tenant**, choose **Run workflow**, enter `CREATE olga-connect-dev`, and run it from the reviewed branch. The workflow uses the protected `dev` GitHub Environment, creates and checks a saved plan, rejects deletes and resources outside the bootstrap boundary, then applies that exact plan.
+Create the dev External ID tenant first. GitHub Actions can check the plan: open **Actions**, select **External ID - Plan Dev Tenant Bootstrap**, choose **Run workflow**, enter `PLAN olga-connect-dev`, and run it from the reviewed branch. The workflow uses the protected `dev` GitHub Environment, creates a saved plan, and rejects deletes and resources outside the bootstrap boundary. It intentionally does not apply because the initial CIAM tenant API requires delegated user authentication.
 
 Configure these non-secret variables on the `dev` GitHub Environment before dispatching the workflow: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER`. These are the same Azure identity variables used by the regular infrastructure action; the bootstrap workflow additionally verifies the approved dev subscription and management tenant. The OIDC identity must trust the `dev` environment subject and have access to the state container, resource group creation, CIAM directory creation, and resource-provider registration.
 
-The local fallback is:
+Apply locally with an authorized Tenant Creator account:
 
 ```powershell
 Copy-Item bootstrap/external-tenant/dev.tfvars.example bootstrap/external-tenant/dev.tfvars

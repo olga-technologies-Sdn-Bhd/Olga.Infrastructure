@@ -30,7 +30,7 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
-After the matching Entra directory objects have been created, add the non-secret `external_identity` object from `environments/dev.external-identity.tfvars.example`. Production uses its own tenant and the separate `environments/prd.external-identity.tfvars.example` values. External tenant creation itself is included in `bootstrap/external-tenant`; the dev tenant is created on demand by the manual **External ID - Bootstrap Dev Tenant** GitHub workflow.
+After the matching Entra directory objects have been created, add the non-secret `external_identity` object from `environments/dev.external-identity.tfvars.example`. Production uses its own tenant and the separate `environments/prd.external-identity.tfvars.example` values. External tenant creation itself is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally.
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `

@@ -1,10 +1,10 @@
-name: External ID - Bootstrap Dev Tenant
+name: External ID - Plan Dev Tenant Bootstrap
 
 on:
   workflow_dispatch:
     inputs:
       confirmation:
-        description: Type CREATE olga-connect-dev to create or reconcile the dev tenant
+        description: Type PLAN olga-connect-dev to plan the dev tenant bootstrap
         required: true
         type: string
 
@@ -18,7 +18,7 @@ env:
 
 jobs:
   bootstrap:
-    name: Plan and apply dev External ID tenant
+    name: Plan dev External ID tenant bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: dev
@@ -62,8 +62,8 @@ jobs:
           CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          if [[ "$CONFIRMATION" != "CREATE olga-connect-dev" ]]; then
-            echo "::error::Confirmation must be exactly: CREATE olga-connect-dev"
+          if [[ "$CONFIRMATION" != "PLAN olga-connect-dev" ]]; then
+            echo "::error::Confirmation must be exactly: PLAN olga-connect-dev"
             exit 1
           fi
 
@@ -143,17 +143,13 @@ jobs:
           fi
           terraform show -no-color dev.tfplan >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Apply exact saved dev plan
-        run: terraform apply -input=false -lock-timeout=10m dev.tfplan
-
-      - name: Publish tenant outputs
+      - name: Publish delegated-apply instructions
         shell: bash
         run: |
-          set -euo pipefail
           {
-            echo "### Dev External ID tenant"
-            echo "- Display name: \`olga-connect-dev\`"
-            echo "- Tenant ID: \`$(terraform output -raw tenant_id)\`"
-            echo "- Primary domain: \`$(terraform output -raw tenant_primary_domain)\`"
-            echo "- Authority: \`$(terraform output -raw tenant_authority)\`"
+            echo
+            echo "### Apply requirement"
+            echo "Microsoft requires a delegated user token for initial External ID tenant creation."
+            echo "GitHub OIDC is app-only, so this workflow intentionally stops after the guarded plan."
+            echo "Run the documented local apply while signed in as an authorized Tenant Creator."
           } >> "$GITHUB_STEP_SUMMARY"
