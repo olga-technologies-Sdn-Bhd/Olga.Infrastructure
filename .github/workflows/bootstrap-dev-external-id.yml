@@ -36,13 +36,13 @@ jobs:
       ARM_USE_OIDC: "true"
       ARM_USE_AZUREAD: "true"
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: 9972baa6-9591-43d7-8b13-59da8e6f1a72
-      ARM_SUBSCRIPTION_ID: e0bb013f-a8af-4d60-9c5b-0140b361f257
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
       TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
       TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
-      TF_VAR_subscription_id: e0bb013f-a8af-4d60-9c5b-0140b361f257
-      TF_VAR_management_tenant_id: 9972baa6-9591-43d7-8b13-59da8e6f1a72
+      TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_management_tenant_id: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_environment: dev
       TF_VAR_resource_group_location: malaysiawest
       TF_VAR_tenant_subdomain: olgaconnectdev
@@ -77,19 +77,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for name in ARM_CLIENT_ID TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER; do
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
+            TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required dev GitHub Environment variable $name is not configured."
               exit 1
             fi
           done
+          if [[ "$ARM_TENANT_ID" != "9972baa6-9591-43d7-8b13-59da8e6f1a72" ]]; then
+            echo "::error::AZURE_TENANT_ID does not match the approved management tenant."
+            exit 1
+          fi
+          if [[ "$ARM_SUBSCRIPTION_ID" != "e0bb013f-a8af-4d60-9c5b-0140b361f257" ]]; then
+            echo "::error::AZURE_SUBSCRIPTION_ID does not match the approved dev subscription."
+            exit 1
+          fi
 
       - name: Sign in to the management tenant with OIDC
         uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: 9972baa6-9591-43d7-8b13-59da8e6f1a72
-          subscription-id: e0bb013f-a8af-4d60-9c5b-0140b361f257
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Register the CIAM resource provider
         shell: bash

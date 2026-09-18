@@ -203,7 +203,7 @@ trivy config --exit-code 1 --severity HIGH,CRITICAL --format table .
 
 Create the dev External ID tenant first. The preferred path is GitHub Actions: open **Actions**, select **External ID - Bootstrap Dev Tenant**, choose **Run workflow**, enter `CREATE olga-connect-dev`, and run it from the reviewed branch. The workflow uses the protected `dev` GitHub Environment, creates and checks a saved plan, rejects deletes and resources outside the bootstrap boundary, then applies that exact plan.
 
-Configure these non-secret variables on the `dev` GitHub Environment before dispatching the workflow: `AZURE_CLIENT_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER`. The OIDC identity must trust the `dev` environment subject and have access to the state container, resource group creation, CIAM directory creation, and resource-provider registration in subscription `e0bb013f-a8af-4d60-9c5b-0140b361f257` under management tenant `9972baa6-9591-43d7-8b13-59da8e6f1a72`.
+Configure these non-secret variables on the `dev` GitHub Environment before dispatching the workflow: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER`. These are the same Azure identity variables used by the regular infrastructure action; the bootstrap workflow additionally verifies the approved dev subscription and management tenant. The OIDC identity must trust the `dev` environment subject and have access to the state container, resource group creation, CIAM directory creation, and resource-provider registration.
 
 The local fallback is:
 
