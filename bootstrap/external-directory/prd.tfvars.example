@@ -1,0 +1,6 @@
+environment           = "prd"
+external_tenant_id    = "00000000-0000-0000-0000-000000000000"
+tenant_subdomain      = "<prd-tenant-subdomain>"
+tenant_primary_domain = "<prd-tenant-subdomain>.onmicrosoft.com"
+tenant_data_location  = "<external-tenant-location>"
+mobile_redirect_uri   = "olga://auth"

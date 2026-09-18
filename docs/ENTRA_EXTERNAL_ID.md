@@ -10,7 +10,7 @@ Core API, NLP API, Swagger, health endpoints, and existing development identity 
 
 The isolated `bootstrap/external-tenant` Terraform root creates the External ID tenant resource through the repository's existing AzAPI provider. It uses Microsoft's preview `Microsoft.AzureActiveDirectory/ciamDirectories@2023-05-17-preview` resource, separate state per environment, and `prevent_destroy`. The manual-only `.github/workflows/bootstrap-dev-external-id.yml` workflow produces a guarded dev plan and does not run on pushes or pull requests. Microsoft requires a delegated user token for initial tenant creation, so GitHub OIDC cannot perform the apply; an authorized user performs that one-time apply locally.
 
-Email OTP, user flows, application registrations, API permissions, and administrator consent are directory operations and remain one-time administrator steps after the tenant exists. The main Terraform root accepts their resulting non-secret IDs and emits mobile and future Core configuration. When repeating a directory step, search for and update the exact name; do not create a duplicate object.
+After the tenant exists, `bootstrap/external-directory` manages the API and public-mobile registrations, service principals, native redirect URI, delegated API scope, preauthorization, tenant-wide delegated permission grant, and the email-OTP customer user flow associated with the mobile application. It uses the AzureAD and Microsoft Graph providers against the external tenant while retaining state in the management subscription. No application secret or certificate is created. The main Terraform root consumes the generated non-secret object and emits mobile and future Core configuration.
 
 Microsoft references:
 
@@ -26,7 +26,7 @@ Microsoft references:
 Use least privilege and separate administrators for dev and prd where practical.
 
 - Tenant creation: an account permitted to create an external tenant and associate billing/subscription details.
-- User flow and identity-provider configuration: `External ID User Flow Administrator`, or a more privileged approved role when the portal operation requires it.
+- User flow and identity-provider configuration: Microsoft Graph delegated `EventListener.ReadWrite.All` plus `External ID User Flow Administrator`, or a more privileged approved role.
 - Application registrations, scopes, and delegated permissions: `Application Administrator` or `Cloud Application Administrator`.
 - Tenant-wide admin consent: `Cloud Application Administrator`, `Privileged Role Administrator`, or another role authorized by the tenant's consent policy.
 
@@ -43,6 +43,7 @@ Do not use a customer account as an administrator. Protect administrator account
 | Redirect URI example | `olga-dev://auth` | `olga://auth` |
 | Main Terraform state key | `olga/dev.tfstate` | `olga/prd.tfstate` |
 | Tenant bootstrap state key | `olga/external-id/dev.tfstate` | `olga/external-id/prd.tfstate` |
+| Directory bootstrap state key | `olga/external-directory/dev.tfstate` | `olga/external-directory/prd.tfstate` |
 
 The examples deliberately use different redirect schemes. The released mobile bundle/package configuration must claim only its matching scheme. Never register the dev callback on the prd application or the prd callback on the dev application.
 
@@ -59,51 +60,22 @@ Complete every step once for dev, then repeat it independently for prd with the 
 
 The tenant bootstrap deployment identity requires the approved tenant-creation role plus Azure permission to create the resource group and CIAM resource. Register the `Microsoft.AzureActiveDirectory` resource provider in the target subscription before the first plan if it is not already registered. Because the ARM resource uses a preview API, review Microsoft release notes before provider/API upgrades. Terraform is prevented from destroying the tenant resource.
 
-### 2. Enable email OTP
+### 2. Create the directory applications and user flow with Terraform
 
-1. In the selected external tenant, go to **Entra ID > External Identities > All identity providers**.
-2. Open **Email one-time passcode** and enable it.
-3. Do not enable email-and-password for this user flow.
-4. Do not configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service.
+Run `bootstrap/external-directory` once with an administrator signed into the new external tenant. It creates:
 
-Email OTP is the primary first-factor method. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation.
+- `olga_api_<environment>` as a single-tenant API registration and service principal;
+- `api://<api-client-id>` and the enabled delegated `access_as_user` scope using access-token version 2;
+- `olga_mobile_<environment>` as a single-tenant public-client registration and service principal;
+- the exact environment-specific native redirect URI;
+- the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
+- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, the email attribute, and only the matching mobile application association.
 
-### 3. Register the future API
-
-1. In **App registrations**, find the exact matching API name or create it once: `olga_api_dev` or `olga_api_prd`.
-2. Select accounts in this organizational directory only. Add no redirect URI and no client secret.
-3. Under **Expose an API**, set the Application ID URI to `api://<api-client-id>`.
-4. Add a delegated scope named `access_as_user`. Keep it enabled and write clear admin/user consent display text describing access to OLGA as the signed-in user.
-5. In the manifest/token configuration, retain access-token version `2`.
-6. Record the Application (client) ID.
-
-This registration is future-ready configuration only. Do not add JWT bearer middleware, policies, roles, endpoint authorization, API keys, or token validation to Core or NLP in this task.
-
-### 4. Register the public mobile application
-
-1. In **App registrations**, find the exact matching mobile name or create it once: `olga_mobile_dev` or `olga_mobile_prd`.
-2. Select accounts in this organizational directory only.
-3. Add the environment-specific callback under the appropriate native/mobile platform. It must exactly match the Expo runtime redirect URI.
-4. Configure it as a public native client using browser-delegated OAuth 2.0 Authorization Code flow with PKCE. Do not enable implicit grant.
-5. Create no client secret or certificate. A mobile application cannot keep a confidential credential.
-6. Under **API permissions**, add only the matching OLGA API's delegated `access_as_user` permission: dev mobile to dev API, and prd mobile to prd API.
-7. Grant tenant administrator consent independently in each tenant.
-8. Record the Application (client) ID.
+The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 
-### 5. Create and associate the user flow
-
-1. Go to **Entra ID > External Identities > User flows**.
-2. Find the exact matching flow or create it once: `olga_signup_signin_dev` or `olga_signup_signin_prd`.
-3. Choose **Email one-time passcode**, not email with password.
-4. Enable self-service customer sign-up.
-5. Configure `email` as a returned claim. Include `given_name`, `family_name`, and `display_name` only where the current mobile onboarding contract needs them.
-6. Do not collect a mobile number. OLGA collects the Malaysian mobile number during application onboarding and initially treats it as unverified.
-7. Apply the approved OLGA logo, colors, legal links, and support text without placing secrets or personal data in branding.
-8. Under the flow's **Applications**, associate only the matching `olga_mobile_<environment>` registration.
-
-### 6. Test before publishing values
+### 3. Test before publishing values
 
 Use **Run user flow** in the matching external tenant and verify:
 
@@ -216,7 +188,24 @@ terraform -chdir=bootstrap/external-tenant apply -input=false -lock-timeout=10m 
 terraform -chdir=bootstrap/external-tenant output
 ```
 
-After completing the directory steps and obtaining both application client IDs, create the main dev input and deploy the main stack:
+Create the directory applications using the existing state storage and a delegated administrator session. Both tenant logins are required: the management tenant owns the state account, while the External ID tenant owns the directory objects.
+
+```powershell
+az login --tenant 9972baa6-9591-43d7-8b13-59da8e6f1a72
+az login --tenant d6b05a66-a3b7-442c-b56f-d4d7a9e154ba --allow-no-subscriptions
+az account set --subscription e0bb013f-a8af-4d60-9c5b-0140b361f257
+
+Copy-Item bootstrap/external-directory/dev.tfvars.example bootstrap/external-directory/dev.tfvars
+Copy-Item bootstrap/external-directory/backend-dev.hcl.example bootstrap/external-directory/backend-dev.hcl
+terraform -chdir=bootstrap/external-directory init
+terraform -chdir=bootstrap/external-directory plan -input=false -lock-timeout=5m -var-file=dev.tfvars -out=dev-directory.tfplan
+terraform -chdir=bootstrap/external-directory apply -input=false -lock-timeout=10m dev-directory.tfplan
+$externalIdentity = terraform -chdir=bootstrap/external-directory output -raw external_identity_json
+```
+
+Store `$externalIdentity` as the non-secret GitHub Environment variable named `EXTERNAL_IDENTITY` in both `dev-plan` and `dev`. Do not create a variable named `TF_VAR_external_identity`; the workflow maps `EXTERNAL_IDENTITY` to that process variable. Then run the normal dev workflow from `develop`.
+
+For optional local main-stack planning, place the same values in the ignored `environments/dev.external-identity.tfvars` file:
 
 ```powershell
 Copy-Item environments/dev.external-identity.tfvars.example environments/dev.external-identity.tfvars
@@ -233,6 +222,12 @@ Copy-Item bootstrap/external-tenant/backend-prd.hcl.example bootstrap/external-t
 terraform -chdir=bootstrap/external-tenant init -input=false -reconfigure -backend-config=backend-prd.hcl
 terraform -chdir=bootstrap/external-tenant plan -input=false -lock-timeout=5m -var-file=prd.tfvars -out=prd-tenant.tfplan
 terraform -chdir=bootstrap/external-tenant apply -input=false -lock-timeout=10m prd-tenant.tfplan
+
+Copy-Item bootstrap/external-directory/prd.tfvars.example bootstrap/external-directory/prd.tfvars
+Copy-Item bootstrap/external-directory/backend-prd.hcl.example bootstrap/external-directory/backend-prd.hcl
+terraform -chdir=bootstrap/external-directory init -input=false -reconfigure -backend-config=backend-prd.hcl
+terraform -chdir=bootstrap/external-directory plan -input=false -lock-timeout=5m -var-file=prd.tfvars -out=prd-directory.tfplan
+terraform -chdir=bootstrap/external-directory apply -input=false -lock-timeout=10m prd-directory.tfplan
 
 Copy-Item environments/prd.external-identity.tfvars.example environments/prd.external-identity.tfvars
 .\scripts\bootstrap-state.ps1 -SubscriptionId '<prd-subscription-id>' -Location '<approved-location>' -Environment prd -StorageAccountName '<state-account>' > backend-prd.hcl

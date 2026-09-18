@@ -1,0 +1,6 @@
+environment           = "dev"
+external_tenant_id    = "d6b05a66-a3b7-442c-b56f-d4d7a9e154ba"
+tenant_subdomain      = "olgaconnectdev"
+tenant_primary_domain = "olgaconnectdev.onmicrosoft.com"
+tenant_data_location  = "Asia Pacific"
+mobile_redirect_uri   = "olga-dev://auth"

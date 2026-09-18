@@ -9,5 +9,7 @@ backend.hcl
 /environments/*.tfvars
 /bootstrap/external-tenant/*.tfvars
 /bootstrap/external-tenant/backend-*.hcl
+/bootstrap/external-directory/*.tfvars
+/bootstrap/external-directory/backend-*.hcl
 crash.log
 $planPath

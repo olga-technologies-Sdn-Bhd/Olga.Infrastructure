@@ -2,11 +2,11 @@ environment = "dev"
 location    = "malaysiawest"
 
 external_identity = {
-  tenant_id             = "00000000-0000-0000-0000-000000000000"
+  tenant_id             = "d6b05a66-a3b7-442c-b56f-d4d7a9e154ba"
   tenant_subdomain      = "olgaconnectdev"
   tenant_primary_domain = "olgaconnectdev.onmicrosoft.com"
-  location              = "<external-tenant-location>"
+  location              = "Asia Pacific"
   mobile_redirect_uri   = "olga-dev://auth"
-  mobile_client_id      = "00000000-0000-0000-0000-000000000000"
-  api_client_id         = "00000000-0000-0000-0000-000000000000"
+  mobile_client_id      = "e8db01a0-3a93-48e0-86fa-68123e026088"
+  api_client_id         = "733db389-f55d-4a33-8cd6-18a14393e3d9"
 }
