@@ -1,0 +1,150 @@
+name: External ID - Bootstrap Dev Tenant
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type CREATE olga-connect-dev to create or reconcile the dev tenant
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TERRAFORM_VERSION: "1.14.6"
+
+jobs:
+  bootstrap:
+    name: Plan and apply dev External ID tenant
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: dev
+    concurrency:
+      group: external-id-tenant-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: bootstrap/external-tenant
+    env:
+      AZURE_CORE_OUTPUT: none
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: 9972baa6-9591-43d7-8b13-59da8e6f1a72
+      ARM_SUBSCRIPTION_ID: e0bb013f-a8af-4d60-9c5b-0140b361f257
+      TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+      TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
+      TF_VAR_subscription_id: e0bb013f-a8af-4d60-9c5b-0140b361f257
+      TF_VAR_management_tenant_id: 9972baa6-9591-43d7-8b13-59da8e6f1a72
+      TF_VAR_environment: dev
+      TF_VAR_resource_group_location: malaysiawest
+      TF_VAR_tenant_subdomain: olgaconnectdev
+      TF_VAR_tenant_display_name: olga-connect-dev
+      TF_VAR_tenant_country_code: MY
+      TF_VAR_tenant_data_location: Asia Pacific
+      TF_VAR_owner: olga-platform
+    steps:
+      - name: Confirm exact dev tenant
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          if [[ "$CONFIRMATION" != "CREATE olga-connect-dev" ]]; then
+            echo "::error::Confirmation must be exactly: CREATE olga-connect-dev"
+            exit 1
+          fi
+
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Verify GitHub Environment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ARM_CLIENT_ID TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required dev GitHub Environment variable $name is not configured."
+              exit 1
+            fi
+          done
+
+      - name: Sign in to the management tenant with OIDC
+        uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: 9972baa6-9591-43d7-8b13-59da8e6f1a72
+          subscription-id: e0bb013f-a8af-4d60-9c5b-0140b361f257
+
+      - name: Register the CIAM resource provider
+        shell: bash
+        run: az provider register --namespace Microsoft.AzureActiveDirectory --wait
+
+      - name: Check formatting
+        run: terraform fmt -check
+
+      - name: Initialize isolated dev state
+        shell: bash
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
+            -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
+            -backend-config="container_name=$TFSTATE_CONTAINER" \
+            -backend-config="key=olga/external-id/dev.tfstate" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Validate
+        run: terraform validate -no-color
+
+      - name: Create saved dev plan
+        run: terraform plan -input=false -lock-timeout=5m -out=dev.tfplan
+
+      - name: Enforce bootstrap plan boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform show -json dev.tfplan > "$RUNNER_TEMP/dev-plan.json"
+          unexpected=$(jq '[.resource_changes[]? | select(
+            .address != "azurerm_resource_group.this" and
+            .address != "azapi_resource.external_tenant"
+          )] | length' "$RUNNER_TEMP/dev-plan.json")
+          deletes=$(jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' "$RUNNER_TEMP/dev-plan.json")
+          if [[ "$unexpected" -ne 0 ]]; then
+            echo "::error::Plan contains resources outside the two-resource External ID bootstrap boundary."
+            exit 1
+          fi
+          if [[ "$deletes" -ne 0 ]]; then
+            echo "::error::Bootstrap workflow refuses every delete or replacement action."
+            exit 1
+          fi
+          terraform show -no-color dev.tfplan >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply exact saved dev plan
+        run: terraform apply -input=false -lock-timeout=10m dev.tfplan
+
+      - name: Publish tenant outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Dev External ID tenant"
+            echo "- Display name: \`olga-connect-dev\`"
+            echo "- Tenant ID: \`$(terraform output -raw tenant_id)\`"
+            echo "- Primary domain: \`$(terraform output -raw tenant_primary_domain)\`"
+            echo "- Authority: \`$(terraform output -raw tenant_authority)\`"
+          } >> "$GITHUB_STEP_SUMMARY"

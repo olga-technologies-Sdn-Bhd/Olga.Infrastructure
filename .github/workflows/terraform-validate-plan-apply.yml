@@ -2,9 +2,9 @@ name: Terraform - Validate, Plan, Apply
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop]
   push:
-    branches: [develop, main]
+    branches: [develop]
   workflow_dispatch:
     inputs:
       environment:
@@ -52,6 +52,10 @@ jobs:
           else
             [[ "$REF_NAME" == "main" ]] && environment="prd" || environment="dev"
           fi
+          [[ "$environment" == "dev" || "$environment" == "prd" ]] || {
+            echo "::error::Unsupported environment: $environment"
+            exit 1
+          }
           [[ "$environment" == "prd" ]] && terraform_environment="prod" || terraform_environment="dev"
           echo "environment=$environment" >> "$GITHUB_OUTPUT"
           echo "terraform_environment=$terraform_environment" >> "$GITHUB_OUTPUT"
@@ -75,6 +79,12 @@ jobs:
 
       - name: Validate
         run: terraform validate -no-color
+
+      - name: Initialize External ID tenant bootstrap without backend
+        run: terraform -chdir=bootstrap/external-tenant init -backend=false -input=false
+
+      - name: Validate External ID tenant bootstrap
+        run: terraform -chdir=bootstrap/external-tenant validate -no-color
 
       - name: Install TFLint
         shell: bash
@@ -142,6 +152,7 @@ jobs:
       TF_VAR_expiry_date: ${{ vars.EXPIRY_DATE }}
       TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
       TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
+      TF_VAR_external_identity: ${{ vars.EXTERNAL_IDENTITY }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
     steps:
@@ -163,7 +174,7 @@ jobs:
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
             TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
             TF_VAR_tenant_id TF_VAR_location TF_VAR_owner TF_VAR_cost_center TF_VAR_expiry_date \
-            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails; do
+            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required plan environment variable $name is not configured."
               exit 1

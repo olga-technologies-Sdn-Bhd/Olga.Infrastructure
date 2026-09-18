@@ -1,0 +1,12 @@
+environment = "prod"
+location    = "malaysiawest"
+
+external_identity = {
+  tenant_id             = "00000000-0000-0000-0000-000000000000"
+  tenant_subdomain      = "olga"
+  tenant_primary_domain = "olga.onmicrosoft.com"
+  location              = "<external-tenant-location>"
+  mobile_redirect_uri   = "olga://auth"
+  mobile_client_id      = "00000000-0000-0000-0000-000000000000"
+  api_client_id         = "00000000-0000-0000-0000-000000000000"
+}
