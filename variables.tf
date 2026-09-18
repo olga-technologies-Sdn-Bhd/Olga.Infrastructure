@@ -203,7 +203,7 @@ variable "nlp_health_probes_enabled" {
 variable "github_organization_subject" {
   description = "Immutable GitHub organization subject component in NAME@DATABASE_ID format."
   type        = string
-  default     = "Ol-gaTechnologies@306667340"
+  default     = "olga-technologies-Sdn-Bhd@324310778"
 
   validation {
     condition     = can(regex("^[^/@]+@[0-9]+$", var.github_organization_subject))

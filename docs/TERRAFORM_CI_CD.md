@@ -61,11 +61,11 @@ Do not add secrets or broad repository/pull-request federated subjects to apply 
 Application delivery uses separate identities managed by this Terraform project:
 
 - Core identity: `id-gh-olga-core-<environment>-deploy`
-- Core dev subject: `repo:Ol-gaTechnologies@306667340/Olga.Core@1358930841:environment:dev`
+- Core dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/Olga.Core@1358930841:environment:dev`
 - NLP identity: `id-gh-olga-nlp-<environment>-deploy`
-- NLP dev subject: `repo:Ol-gaTechnologies@306667340/olga-nlp-api@1356082344:environment:dev`
+- NLP dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-nlp-api@1356082344:environment:dev`
 - Database identity: `id-gh-olga-database-<environment>-deploy`
-- Database dev subject: `repo:Ol-gaTechnologies@306667340/olga-database@1356201535:environment:dev`
+- Database dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-database@1356201535:environment:dev`
 - Registry permission: each identity has `AcrPush` scoped to the environment ACR
 - API deployment permission: each API identity has `Container Apps Contributor` scoped only to its own Container App
 - Database deployment permission: `Container Apps Jobs Operator` scoped only to the migration job

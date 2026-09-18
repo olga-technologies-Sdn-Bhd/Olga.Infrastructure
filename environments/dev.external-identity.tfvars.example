@@ -3,8 +3,8 @@ location    = "malaysiawest"
 
 external_identity = {
   tenant_id             = "00000000-0000-0000-0000-000000000000"
-  tenant_subdomain      = "olgadev"
-  tenant_primary_domain = "olgadev.onmicrosoft.com"
+  tenant_subdomain      = "olgaconnectdev"
+  tenant_primary_domain = "olgaconnectdev.onmicrosoft.com"
   location              = "<external-tenant-location>"
   mobile_redirect_uri   = "olga-dev://auth"
   mobile_client_id      = "00000000-0000-0000-0000-000000000000"
