@@ -1,0 +1,5 @@
+resource_group_name  = "rg-olga-tfstate"
+storage_account_name = "<state-storage-account>"
+container_name       = "tfstate"
+key                  = "olga/external-id/prd.tfstate"
+use_azuread_auth     = true

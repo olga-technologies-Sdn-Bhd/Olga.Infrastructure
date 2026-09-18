@@ -71,3 +71,58 @@ output "database_deployment_identity_client_id" {
 output "database_deployment_oidc_subject" {
   value = local.database_deploy_oidc_subject
 }
+
+output "EXPO_PUBLIC_ENTRA_CLIENT_ID" {
+  description = "Public native-client application ID for the active External ID environment."
+  value       = var.external_identity.mobile_client_id
+}
+
+output "EXPO_PUBLIC_ENTRA_TENANT_ID" {
+  description = "External tenant ID for the active environment."
+  value       = var.external_identity.tenant_id
+}
+
+output "EXPO_PUBLIC_ENTRA_AUTHORITY" {
+  description = "Microsoft Entra External ID authority used by the mobile public client."
+  value       = "https://${var.external_identity.tenant_subdomain}.ciamlogin.com/"
+}
+
+output "EXPO_PUBLIC_ENTRA_REDIRECT_URI" {
+  description = "Environment-specific native redirect URI registered on the matching mobile application."
+  value       = var.external_identity.mobile_redirect_uri
+}
+
+output "EXPO_PUBLIC_OLGA_API_SCOPE" {
+  description = "Delegated OLGA API scope requested by the matching mobile application."
+  value       = "api://${var.external_identity.api_client_id}/access_as_user"
+}
+
+output "AzureAd__Instance" {
+  description = "Future Core API Microsoft.Identity.Web instance; not currently connected to authentication middleware."
+  value       = "https://${var.external_identity.tenant_subdomain}.ciamlogin.com/"
+}
+
+output "AzureAd__TenantId" {
+  description = "Future Core API External ID tenant ID."
+  value       = var.external_identity.tenant_id
+}
+
+output "AzureAd__ClientId" {
+  description = "Future Core API application client ID."
+  value       = var.external_identity.api_client_id
+}
+
+output "AzureAd__Audience" {
+  description = "Future Core API access-token audience."
+  value       = "api://${var.external_identity.api_client_id}"
+}
+
+output "AzureAd__RequiredScope" {
+  description = "Future Core API delegated scope requirement."
+  value       = "access_as_user"
+}
+
+output "AzureAd__Issuer" {
+  description = "Future Core API v2 token issuer; confirm it against the environment's OpenID discovery metadata before enabling enforcement."
+  value       = "https://${var.external_identity.tenant_id}.ciamlogin.com/${var.external_identity.tenant_id}/v2.0"
+}

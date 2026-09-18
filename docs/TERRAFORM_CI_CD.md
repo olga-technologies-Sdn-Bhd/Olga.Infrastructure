@@ -8,11 +8,9 @@ The repository uses one OLGA-style workflow, `.github/workflows/terraform-valida
 | --- | --- | --- | --- | --- |
 | Pull request | `develop` | `dev` | `dev` | Validate, lint, scan, speculative plan |
 | Push/merge | `develop` | `dev` | `dev` | Validate, create new plan, apply exact plan |
-| Pull request | `main` | `prd` | `prod` | Validate, lint, scan, speculative plan |
-| Push/merge | `main` | `prd` | `prod` | Validate, create new plan, approve, apply exact plan |
 | Manual | `dev` or `prd` | selected | `dev` or `prod` | Same gates and a fresh plan |
 
-The external name is `prd`, while the existing Terraform contract uses `prod`. This preserves current OLGA resource names and production controls such as Key Vault purge protection.
+The external production name remains `prd`, while the established Terraform value remains `prod`. CI explicitly maps `prd` to `prod`; any other dispatch value is rejected. Automatic CI/CD runs only for `develop`; production is executed only through a manual `prd` dispatch from an approved `main` ref.
 
 Fork pull requests receive no Azure token. They run formatting, initialization without a backend, validation, TFLint, and Trivy; a maintainer must reproduce their cloud plan from a trusted branch.
 
@@ -43,6 +41,7 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `EXPIRY_DATE` | Review/expiry date in `YYYY-MM-DD` format |
 | `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
 | `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
+| `EXTERNAL_IDENTITY` | Non-secret object containing the matching external tenant ID/subdomain/domain, redirect URI, mobile client ID, and API client ID |
 
 The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 
@@ -106,7 +105,7 @@ Production always waits at the protected `prd` Environment after planning. Revie
 
 ## Branch protection recommendations
 
-Protect `develop` and `main` with pull requests, current branches, resolved conversations, and required `Validate, lint, and scan` plus plan checks. Block force-pushes/deletions and restrict direct pushes and workflow changes. Protect `.github/workflows/**`, `.tflint.hcl`, `.terraform.lock.hcl`, backend configuration, and Terraform modules with CODEOWNERS. Require platform/security review for `main` and disallow bypass.
+Protect `develop` and `main` with pull requests, current branches, and resolved conversations. Require the automatic validation and plan checks on `develop`. Production validation, planning, approval, and apply run only through a manual `prd` workflow dispatch from the reviewed `main` ref. Block force-pushes/deletions and restrict direct pushes and workflow changes. Protect `.github/workflows/**`, `.tflint.hcl`, `.terraform.lock.hcl`, backend configuration, and Terraform modules with CODEOWNERS. Require platform/security review for `main` and disallow bypass.
 
 The workflow intentionally has no path filters. GitHub can leave path-filtered required checks pending, and infrastructure policy should run on every pull request to these branches.
 

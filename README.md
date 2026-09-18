@@ -1,8 +1,8 @@
 # OLGA Connect Azure infrastructure
 
-Terraform project for isolated OLGA Connect development, test, and production environments.
+Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID email OTP setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -30,10 +30,13 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
+After the matching Entra directory objects have been created, add the non-secret `external_identity` object from `environments/dev.external-identity.tfvars.example`. Production uses its own tenant and the separate `environments/prd.external-identity.tfvars.example` values. External tenant creation itself is included in `bootstrap/external-tenant`; the dev tenant is created on demand by the manual **External ID - Bootstrap Dev Tenant** GitHub workflow.
+
 ```powershell
 .\scripts\bootstrap-state.ps1 `
   -SubscriptionId 'e0bb013f-a8af-4d60-9c5b-0140b361f257' `
   -Location 'malaysiawest' `
+  -Environment 'dev' `
   -StorageAccountName '<globally-unique-state-account>' > backend.hcl
 
 # Create olga-connect-dev.auto.tfvars and fill its required non-secret values.
@@ -85,3 +88,9 @@ Changing the already-created dev server from delegated-subnet networking to this
 - NLP API expects the same probes and secrets. Development sets `EmbeddingProvider=Fake` and `EmbeddingProcessing__Mode=Inline`.
 - Enable Azure OpenAI only after the NLP adapter is implemented and regional model quota is approved.
 - API Management is not enabled by default; enable it after the OpenAPI import, OIDC validation, throttling, and policy configuration are defined.
+
+## Mobile identity boundary
+
+Microsoft Entra External ID owns email OTP and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers. It does not store OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+
+Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

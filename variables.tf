@@ -11,10 +11,9 @@ variable "tenant_id" {
 variable "environment" {
   description = "Deployment environment name."
   type        = string
-  default     = "dev"
   validation {
-    condition     = contains(["dev", "test", "prod"], var.environment)
-    error_message = "environment must be dev, test, or prod."
+    condition     = contains(["dev", "prod"], var.environment)
+    error_message = "environment must be dev or prod."
   }
 }
 
@@ -22,6 +21,37 @@ variable "location" {
   description = "Approved Azure region after service-availability and residency review."
   type        = string
   default     = "malaysiawest"
+}
+
+variable "external_identity" {
+  description = "Non-secret Microsoft Entra External ID configuration for the active environment. Directory objects are bootstrapped separately; their identifiers are supplied here for mobile and future API configuration outputs."
+  type = object({
+    tenant_id             = string
+    tenant_subdomain      = string
+    tenant_primary_domain = string
+    location              = string
+    mobile_redirect_uri   = string
+    mobile_client_id      = string
+    api_client_id         = string
+  })
+
+  validation {
+    condition = alltrue([
+      for id in [var.external_identity.tenant_id, var.external_identity.mobile_client_id, var.external_identity.api_client_id] :
+      can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", id))
+    ])
+    error_message = "External ID tenant, mobile client, and API client IDs must be UUIDs."
+  }
+
+  validation {
+    condition = (
+      can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", var.external_identity.tenant_subdomain)) &&
+      can(regex("^[a-z0-9][a-z0-9.-]*\\.[a-z0-9-]{2,63}$", var.external_identity.tenant_primary_domain)) &&
+      length(trimspace(var.external_identity.location)) > 0 &&
+      can(regex("^[a-z][a-z0-9+.-]*://.+$", var.external_identity.mobile_redirect_uri))
+    )
+    error_message = "External ID tenant_subdomain, tenant_primary_domain, location, and mobile_redirect_uri must be valid non-empty values."
+  }
 }
 
 variable "owner" {

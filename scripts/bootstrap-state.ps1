@@ -3,6 +3,14 @@ param(
     [Parameter(Mandatory)][string]$SubscriptionId,
     [Parameter(Mandatory)][string]$Location,
     [Parameter(Mandatory)][string]$StorageAccountName,
+    [Parameter(Mandatory)]
+    [ValidateScript({
+        if ($_ -cnotin @('dev', 'prd')) {
+            throw 'Environment must be exactly dev or prd.'
+        }
+        $true
+    })]
+    [string]$Environment,
     [string]$ResourceGroupName = 'rg-olga-tfstate',
     [string]$ContainerName = 'tfstate'
 )
@@ -16,6 +24,5 @@ az storage container create --name $ContainerName --account-name $StorageAccount
 Write-Output "resource_group_name  = `"$ResourceGroupName`""
 Write-Output "storage_account_name = `"$StorageAccountName`""
 Write-Output "container_name       = `"$ContainerName`""
-Write-Output 'key                  = "olga/dev.tfstate"'
+Write-Output "key                  = `"olga/$Environment.tfstate`""
 Write-Output 'use_azuread_auth     = true'
-
