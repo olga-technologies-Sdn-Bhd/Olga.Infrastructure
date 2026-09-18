@@ -30,9 +30,9 @@ resource "azuread_application_identifier_uri" "api" {
 
 resource "azuread_application_permission_scope" "access_as_user" {
   application_id = azuread_application_registration.api.id
-  scope_id        = random_uuid.access_as_user_scope.result
-  value           = "access_as_user"
-  type            = "User"
+  scope_id       = random_uuid.access_as_user_scope.result
+  value          = "access_as_user"
+  type           = "User"
 
   admin_consent_description  = "Allow this application to access OLGA as the signed-in user."
   admin_consent_display_name = "Access OLGA as the signed-in user"
@@ -69,8 +69,8 @@ resource "azuread_application_redirect_uris" "mobile" {
 
 resource "azuread_application_api_access" "mobile_api" {
   application_id = azuread_application_registration.mobile.id
-  api_client_id   = azuread_application_registration.api.client_id
-  scope_ids       = [azuread_application_permission_scope.access_as_user.scope_id]
+  api_client_id  = azuread_application_registration.api.client_id
+  scope_ids      = [azuread_application_permission_scope.access_as_user.scope_id]
 }
 
 resource "azuread_application_pre_authorized" "mobile" {
@@ -97,8 +97,8 @@ resource "msgraph_resource" "signup_signin_user_flow" {
 
   body = {
     "@odata.type" = "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow"
-    displayName    = "olga_signup_signin_${var.environment}"
-    description    = "OLGA ${var.environment} customer email OTP sign-up and sign-in"
+    displayName   = "olga_signup_signin_${var.environment}"
+    description   = "OLGA ${var.environment} customer email OTP sign-up and sign-in"
     conditions = {
       applications = {
         includeApplications = [
@@ -117,7 +117,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
       ]
     }
     onInteractiveAuthFlowStart = {
-      "@odata.type"  = "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp"
+      "@odata.type"   = "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp"
       isSignUpAllowed = true
     }
     onAttributeCollection = {
