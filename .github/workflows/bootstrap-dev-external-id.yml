@@ -63,7 +63,7 @@ jobs:
           fi
 
       - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -85,7 +85,7 @@ jobs:
           done
 
       - name: Sign in to the management tenant with OIDC
-        uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: 9972baa6-9591-43d7-8b13-59da8e6f1a72
