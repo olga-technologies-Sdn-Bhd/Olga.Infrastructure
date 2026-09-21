@@ -4,6 +4,7 @@
 *.tfplan
 backend.hcl
 *.auto.tfvars
+!olga-connect-*.example.tfvars
 !*.example.auto.tfvars
 !postgres-access.auto.tfvars
 /environments/*.tfvars

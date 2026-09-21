@@ -13,7 +13,8 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
 - Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
-- Core and NLP APIs with external HTTPS ingress for browser-based Swagger access
+- Core API with external HTTPS ingress and the temporarily anonymous NLP API restricted to internal ingress
+- Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
@@ -48,7 +49,7 @@ terraform plan -out=dev.tfplan
 terraform apply dev.tfplan
 ```
 
-The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; Container Apps scaling from zero to one replica; and 0.1 GB/day telemetry caps. Service Bus, API Management, Static Web Apps, Azure OpenAI, Content Safety, SignalR, and Notification Hubs remain disabled.
+The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI and NLP application delivery are enabled; Service Bus remains disabled because the NLP worker polls PostgreSQL. API Management, Static Web Apps, Content Safety, SignalR, and Notification Hubs remain disabled.
 
 The first apply uses Microsoft's public Container Apps bootstrap image. Application repositories own subsequent immutable image revisions; Terraform owns identities, secrets, registry authentication, ingress, and ports. Core and NLP are independently configurable and both use port `8080` by default:
 
@@ -63,7 +64,9 @@ The infrastructure apply creates one deployment identity per repository and trus
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
 
-Both Container Apps have external HTTPS ingress. After applying Terraform, retrieve the browser-ready Swagger UI addresses with:
+The Core API has external HTTPS ingress. The NLP API has internal-only ingress until JWT authorization or an authenticated gateway is implemented. Its Terraform URL output is intended for callers with network access to the Container Apps environment.
+
+The API URL outputs remain available with:
 
 ```powershell
 terraform output -raw core_swagger_url
@@ -85,8 +88,8 @@ Changing the already-created dev server from delegated-subnet networking to this
 ## Application readiness
 
 - Core API expects port `8080`, `/health`, `/ready`, `ConnectionStrings__PostgreSql`, and `ServiceAuthorization__Token`.
-- NLP API expects the same probes and secrets. Development sets `EmbeddingProvider=Fake` and `EmbeddingProcessing__Mode=Inline`.
-- Enable Azure OpenAI only after the NLP adapter is implemented and regional model quota is approved.
+- NLP API expects the same probes and secrets. It uses `EmbeddingProvider=Azure` and `EmbeddingProcessing__Mode=Queued`; evaluation endpoints retain direct managed-identity access to Azure OpenAI.
+- The NLP worker remains at one replica for PostgreSQL polling and uses the same private Azure OpenAI endpoint with its own managed identity.
 - API Management is not enabled by default; enable it after the OpenAPI import, OIDC validation, throttling, and policy configuration are defined.
 
 ## Mobile identity boundary

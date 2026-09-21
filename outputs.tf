@@ -28,6 +28,26 @@ output "nlp_api_fqdn" {
   value = module.platform.nlp_api_fqdn
 }
 
+output "nlp_worker_container_app_name" {
+  value = module.platform.nlp_worker_container_app_name
+}
+
+output "nlp_worker_identity_client_id" {
+  value = module.platform.nlp_worker_identity_client_id
+}
+
+output "azure_openai_endpoint" {
+  value = module.platform.azure_openai_endpoint
+}
+
+output "azure_openai_embedding_deployment_name" {
+  value = module.platform.azure_openai_embedding_deployment_name
+}
+
+output "azure_openai_account_id" {
+  value = module.platform.azure_openai_account_id
+}
+
 output "postgres_server_fqdn" {
   value = module.data.postgres_server_fqdn
 }

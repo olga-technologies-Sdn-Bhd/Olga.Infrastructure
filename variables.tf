@@ -177,6 +177,12 @@ variable "nlp_api_image" {
   default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
 }
 
+variable "nlp_worker_image" {
+  description = "NLP worker bootstrap image used when the Container App is created."
+  type        = string
+  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+}
+
 variable "use_acr_images" {
   description = "Compatibility switch that enables ACR delivery for both APIs. Prefer the Core-specific switch for a Core-only release."
   type        = bool
@@ -197,6 +203,12 @@ variable "core_health_probes_enabled" {
 
 variable "nlp_application_delivery_enabled" {
   description = "Configure NLP API for its ACR-hosted .NET image on port 8080."
+  type        = bool
+  default     = true
+}
+
+variable "nlp_worker_application_delivery_enabled" {
+  description = "Configure the NLP worker to pull its workload image from ACR."
   type        = bool
   default     = true
 }
@@ -272,14 +284,43 @@ variable "enable_admin_static_web_app" {
 }
 
 variable "enable_azure_openai" {
-  description = "Enable only after regional availability and model quota are approved."
+  description = "Provision the private Azure OpenAI account and embedding deployment."
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "azure_openai_location" {
+  description = "Azure region approved for the Azure OpenAI embedding deployment; it may differ from the primary workload region."
+  type        = string
+  default     = "australiaeast"
 }
 
 variable "azure_openai_model_version" {
-  type    = string
-  default = "1"
+  description = "Approved Azure model catalog version for text-embedding-3-small."
+  type        = string
+  default     = "1"
+
+  validation {
+    condition     = var.azure_openai_model_version == "1"
+    error_message = "text-embedding-3-small currently requires the approved Azure model version 1."
+  }
+}
+
+variable "azure_openai_embedding_deployment_name" {
+  description = "Stable deployment name used by NLP workloads when requesting embeddings."
+  type        = string
+  default     = "text-embedding-3-small"
+}
+
+variable "azure_openai_embedding_capacity" {
+  description = "Standard deployment capacity in thousands of tokens per minute."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.azure_openai_embedding_capacity >= 1
+    error_message = "azure_openai_embedding_capacity must be at least 1."
+  }
 }
 
 variable "enable_content_safety" {
