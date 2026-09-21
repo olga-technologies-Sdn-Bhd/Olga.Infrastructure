@@ -135,6 +135,8 @@ The root Terraform `tenant_id` identifies the Entra tenant that contains the Azu
 
 ## Mobile runtime sequence
 
+The complete React Native/Expo implementation and verification procedure is in [MOBILE_ENTRA_EXTERNAL_ID.md](MOBILE_ENTRA_EXTERNAL_ID.md).
+
 1. The user selects email login and the mobile app opens the Microsoft-hosted user flow in the system browser.
 2. The customer enters an email address; Entra generates and sends the OTP.
 3. The customer submits the OTP directly to Entra; Entra validates it and manages expiration/retries.

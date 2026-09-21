@@ -274,6 +274,10 @@ resource "azurerm_container_app" "nlp_api" {
         value = var.environment == "prod" ? "Production" : "Development"
       }
       env {
+        name  = "Hosting__AzureContainerAppsIngress"
+        value = "true"
+      }
+      env {
         name        = "ConnectionStrings__PostgreSql"
         secret_name = "postgresql"
       }
