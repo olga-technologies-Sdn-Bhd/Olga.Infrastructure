@@ -162,7 +162,8 @@ resource "random_password" "service_token" {
 }
 
 locals {
-  postgres_connection_string = "Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_admin_username};Password=${var.postgres_admin_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=25"
+  generated_postgres_connection_string = "Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_admin_username};Password=${var.postgres_admin_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=25"
+  postgres_connection_string           = coalesce(var.postgres_connection_string_override, local.generated_postgres_connection_string)
 }
 
 # Secrets use the ARM control plane so private-only vaults do not require a public CI runner exception.

@@ -83,6 +83,13 @@ variable "postgres_admin_username" {
   default = "olga_migration_admin"
 }
 
+variable "postgres_connection_string_override" {
+  description = "Optional development-only value for the postgresql-connection Key Vault secret. Production always uses the generated migration-administrator connection string."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "postgres_sku_name" {
   type    = string
   default = "B_Standard_B1ms"

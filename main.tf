@@ -125,6 +125,7 @@ module "data" {
   virtual_network_id                       = module.network.virtual_network_id
   postgres_admin_username                  = var.postgres_admin_username
   postgres_admin_password                  = module.foundation.postgres_admin_password
+  postgres_connection_string_override      = var.environment == "dev" ? var.postgres_connection_string_override : null
   postgres_sku_name                        = var.postgres_sku_name
   postgres_storage_mb                      = var.postgres_storage_mb
   postgres_allowed_extensions              = var.postgres_allowed_extensions
