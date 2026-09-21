@@ -4,9 +4,9 @@
 environment = "prod"
 location    = "malaysiawest"
 
-enable_azure_openai                     = true
-azure_openai_location                   = "australiaeast"
-azure_openai_model_version              = "1"
+enable_azure_openai                    = true
+azure_openai_location                  = "australiaeast"
+azure_openai_model_version             = "1"
 azure_openai_embedding_deployment_name = "text-embedding-3-small"
 azure_openai_embedding_capacity        = 10
 
