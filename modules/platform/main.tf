@@ -589,6 +589,15 @@ resource "azurerm_private_endpoint" "openai" {
     name                 = "openai"
     private_dns_zone_ids = [azurerm_private_dns_zone.openai[0].id]
   }
+
+  # Cognitive account creation can return while Azure still reports the
+  # provisioning state as Accepted. The successful model deployment proves
+  # the account data plane is ready; the DNS link also completes before the
+  # endpoint is attached, avoiding the initial control-plane race.
+  depends_on = [
+    azurerm_cognitive_deployment.embedding,
+    azurerm_private_dns_zone_virtual_network_link.openai,
+  ]
 }
 
 resource "azurerm_role_assignment" "nlp_openai_user" {
