@@ -69,7 +69,7 @@ Run `bootstrap/external-directory` once with an administrator signed into the ne
 - `olga_mobile_<environment>` as a single-tenant public-client registration and service principal;
 - the exact environment-specific native redirect URI;
 - the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
-- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, the email attribute, and only the matching mobile application association.
+- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
 
 The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 

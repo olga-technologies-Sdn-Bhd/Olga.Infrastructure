@@ -129,6 +129,13 @@ resource "msgraph_resource" "signup_signin_user_flow" {
           description           = "Email address of the user"
           userFlowAttributeType = "builtIn"
           dataType              = "string"
+        },
+        {
+          id                    = "displayName"
+          displayName           = "Display Name"
+          description           = "Display name of the user"
+          userFlowAttributeType = "builtIn"
+          dataType              = "string"
         }
       ]
       attributeCollectionPage = {
@@ -144,6 +151,16 @@ resource "msgraph_resource" "signup_signin_user_flow" {
                 writeToDirectory = true
                 required         = true
                 validationRegEx  = "^.+@.+\\..+$"
+              },
+              {
+                attribute        = "displayName"
+                label            = "Display Name"
+                inputType        = "text"
+                hidden           = false
+                editable         = true
+                writeToDirectory = true
+                required         = false
+                validationRegEx  = "^[a-zA-Z_][0-9a-zA-Z_ ]*[0-9a-zA-Z_]+$"
               }
             ]
           }
