@@ -67,7 +67,8 @@ Application delivery uses separate identities managed by this Terraform project:
 - Database identity: `id-gh-olga-database-<environment>-deploy`
 - Database dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-database@1356201535:environment:dev`
 - Registry permission: each identity has `AcrPush` scoped to the environment ACR
-- API deployment permission: each API identity has `Container Apps Contributor` scoped only to its own Container App
+- Core deployment permission: the Core identity has `Container Apps Contributor` scoped only to the Core API Container App
+- NLP deployment permission: the NLP identity has separate `Container Apps Contributor` assignments scoped to the NLP API and NLP worker Container Apps
 - Database deployment permission: `Container Apps Jobs Operator` scoped only to the migration job
 
 After Terraform creates the identities, copy `core_deployment_identity_client_id`, `nlp_deployment_identity_client_id`, and `database_deployment_identity_client_id` to the matching repository GitHub Environment as `AZURE_CLIENT_ID`. Keep tenant, subscription, ACR login server, resource group, Container App, and migration-job settings aligned with the infrastructure outputs. Each application workflow owns image digest releases and supplies its revision suffix. The database workflow starts an exact image digest as a one-off job execution. Terraform intentionally ignores API image drift while continuing to manage all other Container App configuration; Azure generates a fresh suffix for any Terraform-driven template revision.

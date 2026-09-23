@@ -466,6 +466,13 @@ resource "azurerm_container_app" "nlp_worker" {
   ]
 }
 
+resource "azurerm_role_assignment" "nlp_deploy_worker_container_app" {
+  scope                            = azurerm_container_app.nlp_worker.id
+  role_definition_name             = "Container Apps Contributor"
+  principal_id                     = var.nlp_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
 resource "azurerm_signalr_service" "this" {
   count = var.enable_signalr ? 1 : 0
 
