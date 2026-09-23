@@ -347,9 +347,7 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   ingress {
-    # Keep the temporarily anonymous NLP API reachable only inside the
-    # Container Apps environment until JWT validation or a gateway is in place.
-    external_enabled = false
+    external_enabled = true
     target_port      = var.nlp_application_delivery_enabled ? 8080 : 80
     transport        = "auto"
 

@@ -13,7 +13,7 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
 - Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
-- Core API with external HTTPS ingress and the temporarily anonymous NLP API restricted to internal ingress
+- Core and NLP APIs with external HTTPS ingress
 - Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
@@ -64,7 +64,7 @@ The infrastructure apply creates one deployment identity per repository and trus
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
 
-The Core API has external HTTPS ingress. The NLP API has internal-only ingress until JWT authorization or an authenticated gateway is implemented. Its Terraform URL output is intended for callers with network access to the Container Apps environment.
+The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
 
 The API URL outputs remain available with:
 
