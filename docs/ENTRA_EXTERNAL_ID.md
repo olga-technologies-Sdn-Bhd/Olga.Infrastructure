@@ -66,12 +66,12 @@ Run `bootstrap/external-directory` once with an administrator signed into the ne
 
 - `olga_api_<environment>` as a single-tenant API registration and service principal;
 - `api://<api-client-id>` and the enabled delegated `access_as_user` scope using access-token version 2;
-- `olga_mobile_<environment>` as a single-tenant public-client registration and service principal;
+- `olga_mobile_<environment>` as a single-tenant public-client registration and service principal, with public-client flows and the native authentication APIs enabled;
 - the exact environment-specific native redirect URI;
 - the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
 - `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
 
-The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
+The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. The mobile registration permits both the existing browser-delegated flow and a native-authentication client. Native authentication lets the mobile app accept one email address, request the `registration_required` capability, and continue an unknown address into sign-up without showing Microsoft's **No account? Create one** branch. The account must still be created only after Entra verifies the emailed OTP. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 
@@ -136,6 +136,8 @@ The root Terraform `tenant_id` identifies the Entra tenant that contains the Azu
 ## Mobile runtime sequence
 
 The complete React Native/Expo implementation and verification procedure is in [MOBILE_ENTRA_EXTERNAL_ID.md](MOBILE_ENTRA_EXTERNAL_ID.md).
+
+For the direct-registration experience, the app uses native authentication: it submits the email once, advertises the `registration_required` capability, handles either the sign-in or registration challenge without exposing which path was selected, submits the OTP directly to Entra, and automatically signs in after a successful registration. The browser-delegated fallback remains available through the registered callback.
 
 1. The user selects email login and the mobile app opens the Microsoft-hosted user flow in the system browser.
 2. The customer enters an email address; Entra generates and sends the OTP.

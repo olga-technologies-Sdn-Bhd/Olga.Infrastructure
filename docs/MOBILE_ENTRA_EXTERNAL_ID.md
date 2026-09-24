@@ -1,8 +1,8 @@
 # Mobile sign-up and sign-in with Microsoft Entra External ID
 
-This runbook is for the OLGA React Native/Expo application. It integrates the existing Microsoft-hosted email OTP user flow by using OAuth 2.0 Authorization Code with PKCE. The mobile application never generates, sends, receives, logs, stores, or validates the OTP itself.
+This runbook is for the OLGA React Native/Expo application. It documents the existing Microsoft-hosted email OTP flow and the infrastructure prerequisite for replacing its **No account? Create one** branch with a native-authentication flow. The mobile application must never generate, send, log, persist, or validate OTP values itself; it may collect an OTP only to submit it directly to Microsoft Entra during native authentication.
 
-The mobile source code is not in this repository, so the steps below must be completed in the mobile repository. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
+The mobile source code is not in this repository, so the client-side steps must be completed in the mobile repository. `bootstrap/external-directory` enables public-client flows and the native authentication APIs on the mobile registration. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
 
 ## 1. Use the dev runtime values
 
@@ -214,7 +214,9 @@ Connect `login()` to the app's **Sign up or sign in with email** button and disa
 8. The app exchanges the authorization code with the PKCE verifier and no client secret.
 9. The app stores the resulting tokens in `expo-secure-store`.
 
-Do not render an OTP input in OLGA, intercept the OTP, call a custom `/send-otp` or `/verify-otp` endpoint, or put OTP/token values in logs, crash reports, analytics, Redux persistence, AsyncStorage, or SQLite.
+This browser-delegated implementation cannot remove step 3. To provide a single email entry with no separate account-creation confirmation, replace this client flow with Microsoft Entra Native Authentication. Initiate authentication with the `registration_required` capability. For an existing identity, continue the email-OTP sign-in challenge; when Entra requires registration, continue directly into the email-OTP sign-up challenge without asking the customer to select **Create one** or re-enter the email. Keep the outward response identical for both paths to avoid exposing whether an email address is already registered. Create the customer identity only after Entra accepts the OTP, then use the returned continuation token to sign the customer in automatically.
+
+In the browser-delegated flow, do not render an OTP input in OLGA or intercept the OTP. In the native-authentication flow, the app may collect the OTP only in memory and submit it directly to Entra through the supported native SDK or API. Never add a custom `/send-otp` or `/verify-otp` endpoint, and never put OTP/token values in logs, crash reports, analytics, Redux persistence, AsyncStorage, or SQLite.
 
 ## 6. Restore and refresh the session
 
@@ -299,6 +301,8 @@ Use a real development build on a device, then verify both paths:
 12. Repeat with the same email address and confirm existing-customer sign-in succeeds.
 13. Confirm cancel, incorrect/expired OTP, offline, and callback-error paths show safe retry behavior.
 
+For the direct-registration native flow, additionally verify that the customer enters the email only once, an unknown address proceeds directly to the OTP challenge without a **Create one** prompt, the account does not exist before successful OTP verification, registration automatically yields a signed-in session, and the UI does not reveal whether an email was already registered.
+
 The infrastructure-side dev objects expected by this test are:
 
 | Object | Dev value |
@@ -326,9 +330,12 @@ Production infrastructure execution remains manual-only. Creating the dev setup 
 
 Before the mobile change is marked complete, confirm that:
 
-- the dev build claims `olga-dev://auth` and does not contain a production callback;
-- the app requests `openid`, `profile`, `email`, `offline_access`, and the dev `access_as_user` scope;
-- Authorization Code with PKCE is used and no mobile client secret exists;
+- the app uses a supported Entra native-authentication SDK or API and sends the `registration_required` capability;
+- an unknown email continues directly into registration without a **Create one** prompt or a second email entry;
+- the account is created only after successful Entra OTP verification and the returned continuation token signs the customer in automatically;
+- the UI and error handling do not disclose whether the submitted email was already registered;
+- the dev build claims `olga-dev://auth` for web fallback and does not contain a production callback;
+- the app requests `openid`, `profile`, `email`, `offline_access`, and the dev `access_as_user` scope, and contains no mobile client secret;
 - new-customer sign-up and existing-customer sign-in both complete on a physical device;
 - access, refresh, and ID tokens are stored only in OS-backed secure storage or kept in memory;
 - refresh-token rotation replaces the previous stored refresh token;
@@ -343,3 +350,5 @@ Before the mobile change is marked complete, confirm that:
 - [Expo authentication guide](https://docs.expo.dev/guides/authentication/)
 - [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/)
 - [Microsoft Entra External ID endpoint formats](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-custom-url-domain#configure-your-applications)
+- [Microsoft Entra native authentication](https://learn.microsoft.com/en-us/entra/identity-platform/concept-native-authentication)
+- [Microsoft Entra native authentication API](https://learn.microsoft.com/en-us/entra/identity-platform/reference-native-authentication-api)

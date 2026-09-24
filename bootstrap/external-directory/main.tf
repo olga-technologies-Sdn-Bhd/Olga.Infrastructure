@@ -73,6 +73,27 @@ resource "azuread_application_api_access" "mobile_api" {
   scope_ids      = [azuread_application_permission_scope.access_as_user.scope_id]
 }
 
+resource "azuread_application_fallback_public_client" "mobile" {
+  application_id = azuread_application_registration.mobile.id
+  enabled        = true
+
+  depends_on = [
+    azuread_application_redirect_uris.mobile,
+    azuread_application_api_access.mobile_api,
+  ]
+}
+
+resource "msgraph_update_resource" "mobile_native_authentication" {
+  url         = "applications/${azuread_application_registration.mobile.object_id}"
+  api_version = "v1.0"
+
+  body = {
+    nativeAuthenticationApisEnabled = "all"
+  }
+
+  depends_on = [azuread_application_fallback_public_client.mobile]
+}
+
 resource "azuread_application_pre_authorized" "mobile" {
   application_id       = azuread_application_registration.api.id
   authorized_client_id = azuread_application_registration.mobile.client_id
