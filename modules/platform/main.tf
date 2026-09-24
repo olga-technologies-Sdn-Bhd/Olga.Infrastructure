@@ -146,6 +146,12 @@ resource "azurerm_container_app" "core_api" {
     identity            = var.core_identity_id
   }
 
+  secret {
+    name                = "identity-protection-master-key"
+    key_vault_secret_id = var.identity_master_key_secret_uri
+    identity            = var.core_identity_id
+  }
+
   dynamic "registry" {
     for_each = var.core_application_delivery_enabled ? [1] : []
     content {
@@ -175,6 +181,10 @@ resource "azurerm_container_app" "core_api" {
       env {
         name        = "ServiceAuthorization__Token"
         secret_name = "service-token"
+      }
+      env {
+        name        = "IdentityProtection__MasterKeyBase64"
+        secret_name = "identity-protection-master-key"
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"

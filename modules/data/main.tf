@@ -161,6 +161,10 @@ resource "random_password" "service_token" {
   special = false
 }
 
+resource "random_id" "identity_protection_master_key" {
+  byte_length = 32
+}
+
 locals {
   generated_postgres_connection_string = "Host=${azurerm_postgresql_flexible_server.this.fqdn};Port=5432;Database=${azurerm_postgresql_flexible_server_database.this.name};Username=${var.postgres_admin_username};Password=${var.postgres_admin_password};SSL Mode=VerifyFull;Trust Server Certificate=false;Maximum Pool Size=25"
   postgres_connection_string           = coalesce(var.postgres_connection_string_override, local.generated_postgres_connection_string)
@@ -193,6 +197,17 @@ resource "azapi_resource" "service_token" {
   body = {
     properties = {
       value = random_password.service_token.result
+    }
+  }
+}
+
+resource "azapi_resource" "identity_protection_master_key" {
+  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
+  parent_id = azurerm_key_vault.this.id
+  name      = "identity-protection-master-key"
+  body = {
+    properties = {
+      value = random_id.identity_protection_master_key.b64_std
     }
   }
 }

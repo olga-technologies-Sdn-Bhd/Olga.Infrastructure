@@ -15,6 +15,7 @@ variable "acr_id" { type = string }
 variable "acr_login_server" { type = string }
 variable "postgres_connection_secret_uri" { type = string }
 variable "service_token_secret_uri" { type = string }
+variable "identity_master_key_secret_uri" { type = string }
 variable "core_identity_id" { type = string }
 variable "core_identity_principal_id" { type = string }
 variable "nlp_identity_id" { type = string }
