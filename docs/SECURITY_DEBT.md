@@ -18,6 +18,7 @@ Do not represent the current system as API-protected. This exception must be rev
 - Add authenticated-member ownership checks.
 - Protect member, mobile, matching, connection, chat, notification, location, and file endpoints.
 - Protect administrative endpoints with roles and stronger authentication.
+- `POST /v1/members/lookup` returns the `member_id` for any registered email supplied in the request body, so anyone who knows a member's email can obtain their member ID and then act as them through `X-Member-Id`. After Entra validation, take the email (or `iss` + `sub`) from the validated token instead of the request body, return only the caller's own member, and rate-limit the operation.
 
 ## NLP API
 
