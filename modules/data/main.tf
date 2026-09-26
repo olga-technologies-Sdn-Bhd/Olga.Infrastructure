@@ -212,6 +212,26 @@ resource "azapi_resource" "identity_protection_master_key" {
   }
 }
 
+# Interim admin API key for Core admin routes until Entra sign-in is wired.
+# Not created in prod, so prod admin routes stay closed (503 ADMIN_NOT_CONFIGURED).
+resource "random_password" "core_admin_api_key" {
+  count   = var.environment == "prod" ? 0 : 1
+  length  = 48
+  special = false
+}
+
+resource "azapi_resource" "core_admin_api_key" {
+  count     = var.environment == "prod" ? 0 : 1
+  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
+  parent_id = azurerm_key_vault.this.id
+  name      = "core-admin-api-key"
+  body = {
+    properties = {
+      value = random_password.core_admin_api_key[0].result
+    }
+  }
+}
+
 resource "azurerm_storage_account" "this" {
   name                            = "stolga${var.suffix}"
   resource_group_name             = var.resource_group_name
