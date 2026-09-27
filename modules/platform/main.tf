@@ -161,7 +161,9 @@ resource "azurerm_container_app" "core_api" {
   }
 
   template {
-    min_replicas = 0
+    # Keep one replica warm on dev so the first call after idle doesn't wait 30-60 s
+    # for a cold start (mobile clients time out). Other environments still scale to zero.
+    min_replicas = var.environment == "dev" ? 1 : 0
     max_replicas = 1
 
     container {
@@ -276,7 +278,9 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   template {
-    min_replicas = 0
+    # Keep one replica warm on dev so the first call after idle doesn't wait 30-60 s
+    # for a cold start (mobile clients time out). Other environments still scale to zero.
+    min_replicas = var.environment == "dev" ? 1 : 0
     max_replicas = 1
 
     container {
