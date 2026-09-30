@@ -67,7 +67,8 @@ function Invoke-SafeGraphRequest {
     catch {
         $status = Get-SafeHttpStatus -Exception $_.Exception
         if ($null -ne $status) {
-            throw "Microsoft Graph request failed with HTTP status $status. Response details were suppressed to protect credentials and tokens."
+            $safePath = ([Uri]$Uri).AbsolutePath
+            throw "Microsoft Graph $Method $safePath failed with HTTP status $status. Response details were suppressed to protect credentials and tokens."
         }
         throw 'Microsoft Graph request failed. Error details were suppressed to protect credentials and tokens.'
     }
@@ -202,7 +203,7 @@ try {
 
     $expectedFlowName = "olga_signup_signin_$Environment"
     $flows = @()
-    $nextLink = "$graphRoot/identity/authenticationEventsFlows?`$select=id,displayName"
+    $nextLink = "$graphRoot/identity/authenticationEventsFlows"
     while ($null -ne $nextLink) {
         if (-not $nextLink.StartsWith("$graphRoot/identity/authenticationEventsFlows", [StringComparison]::Ordinal)) {
             throw 'Microsoft Graph returned an unexpected user-flow pagination URL.'
@@ -223,8 +224,7 @@ try {
     }
 
     $flowProvidersUri = "$graphRoot/identity/authenticationEventsFlows/$flowId/microsoft.graph.externalUsersSelfServiceSignUpEventsFlow/onAuthenticationMethodLoadStart/microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp/identityProviders"
-    $flowProviders = Invoke-SafeGraphRequest -Method GET -Uri $flowProvidersUri -Token $accessToken
-    $flowProviderIds = @($flowProviders.value | ForEach-Object { [string]$_.id })
+    $flowProviderIds = @($matchingFlows[0].onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
     if ($flowProviderIds -notcontains 'EmailOtpSignup-OAUTH') {
         throw 'The existing customer user flow does not contain Email OTP; refusing to modify its identity-provider associations.'
     }
@@ -235,8 +235,8 @@ try {
         }
         $null = Invoke-SafeGraphRequest -Method POST -Uri "$flowProvidersUri/`$ref" -Token $accessToken -Body $referenceBody
 
-        $verifiedFlowProviders = Invoke-SafeGraphRequest -Method GET -Uri $flowProvidersUri -Token $accessToken
-        $verifiedFlowProviderIds = @($verifiedFlowProviders.value | ForEach-Object { [string]$_.id })
+        $verifiedFlow = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/identity/authenticationEventsFlows/$flowId" -Token $accessToken
+        $verifiedFlowProviderIds = @($verifiedFlow.onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
         if ($verifiedFlowProviderIds -notcontains 'Google-OAUTH' -and $verifiedFlowProviderIds -notcontains $providerId) {
             throw 'Microsoft Graph did not confirm the Google association on the existing customer user flow.'
         }
