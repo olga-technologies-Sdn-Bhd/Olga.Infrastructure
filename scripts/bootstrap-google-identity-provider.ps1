@@ -126,8 +126,11 @@ try {
     $hasOrganizationReadPermission =
         $delegatedPermissions -contains 'Organization.Read.All' -or
         $applicationPermissions -contains 'Organization.Read.All'
-    if (-not $hasIdentityProviderPermission -or -not $hasOrganizationReadPermission) {
-        throw 'The Microsoft Graph token must contain IdentityProvider.ReadWrite.All and Organization.Read.All as delegated scopes or application roles.'
+    $hasEventListenerPermission =
+        $delegatedPermissions -contains 'EventListener.ReadWrite.All' -or
+        $applicationPermissions -contains 'EventListener.ReadWrite.All'
+    if (-not $hasIdentityProviderPermission -or -not $hasOrganizationReadPermission -or -not $hasEventListenerPermission) {
+        throw 'The Microsoft Graph token must contain IdentityProvider.ReadWrite.All, Organization.Read.All, and EventListener.ReadWrite.All as delegated scopes or application roles.'
     }
 
     $organization = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/organization?`$select=id,verifiedDomains" -Token $accessToken
@@ -197,6 +200,48 @@ try {
         throw 'Microsoft Graph did not return a valid Google identity-provider object ID.'
     }
 
+    $expectedFlowName = "olga_signup_signin_$Environment"
+    $flows = @()
+    $nextLink = "$graphRoot/identity/authenticationEventsFlows?`$select=id,displayName"
+    while ($null -ne $nextLink) {
+        if (-not $nextLink.StartsWith("$graphRoot/identity/authenticationEventsFlows", [StringComparison]::Ordinal)) {
+            throw 'Microsoft Graph returned an unexpected user-flow pagination URL.'
+        }
+        $page = Invoke-SafeGraphRequest -Method GET -Uri $nextLink -Token $accessToken
+        $flows += @($page.value)
+        $nextLink = $page.'@odata.nextLink'
+    }
+
+    $matchingFlows = @($flows | Where-Object { [string]$_.displayName -ceq $expectedFlowName })
+    if ($matchingFlows.Count -ne 1) {
+        throw "Expected exactly one $expectedFlowName user flow in the target external tenant."
+    }
+
+    $flowId = [string]$matchingFlows[0].id
+    if ($flowId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+        throw 'The existing customer user flow has an invalid object ID.'
+    }
+
+    $flowProvidersUri = "$graphRoot/identity/authenticationEventsFlows/$flowId/microsoft.graph.externalUsersSelfServiceSignUpEventsFlow/onAuthenticationMethodLoadStart/microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp/identityProviders"
+    $flowProviders = Invoke-SafeGraphRequest -Method GET -Uri $flowProvidersUri -Token $accessToken
+    $flowProviderIds = @($flowProviders.value | ForEach-Object { [string]$_.id })
+    if ($flowProviderIds -notcontains 'EmailOtpSignup-OAUTH') {
+        throw 'The existing customer user flow does not contain Email OTP; refusing to modify its identity-provider associations.'
+    }
+
+    if ($flowProviderIds -notcontains 'Google-OAUTH' -and $flowProviderIds -notcontains $providerId) {
+        $referenceBody = @{
+            '@odata.id' = "$graphRoot/identityProviders/Google-OAUTH"
+        }
+        $null = Invoke-SafeGraphRequest -Method POST -Uri "$flowProvidersUri/`$ref" -Token $accessToken -Body $referenceBody
+
+        $verifiedFlowProviders = Invoke-SafeGraphRequest -Method GET -Uri $flowProvidersUri -Token $accessToken
+        $verifiedFlowProviderIds = @($verifiedFlowProviders.value | ForEach-Object { [string]$_.id })
+        if ($verifiedFlowProviderIds -notcontains 'Google-OAUTH' -and $verifiedFlowProviderIds -notcontains $providerId) {
+            throw 'Microsoft Graph did not confirm the Google association on the existing customer user flow.'
+        }
+    }
+
     Write-Output $providerId
 }
 finally {
@@ -204,6 +249,7 @@ finally {
     $accessToken = $null
     $createBody = $null
     $updateBody = $null
+    $referenceBody = $null
     $tokenJson = $null
     $tokenResult = $null
     Remove-Item "Env:$secretEnvironmentVariable" -ErrorAction SilentlyContinue
