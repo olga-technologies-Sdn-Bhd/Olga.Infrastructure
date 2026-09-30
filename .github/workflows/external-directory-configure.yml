@@ -1,0 +1,208 @@
+name: External ID Directory - Configure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: External ID environment to configure
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prd]
+      confirmation:
+        description: Enter APPLY olga-external-directory-<environment>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TERRAFORM_VERSION: "1.14.6"
+
+jobs:
+  configure:
+    name: Configure ${{ inputs.environment }} external directory
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: external-directory-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CORE_OUTPUT: none
+      ARM_USE_OIDC: "true"
+      ARM_USE_AZUREAD: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TFSTATE_RESOURCE_GROUP: ${{ vars.TFSTATE_RESOURCE_GROUP }}
+      TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
+      TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
+      EXTERNAL_DIRECTORY_CLIENT_ID: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
+      EXTERNAL_TENANT_ID: ${{ vars.EXTERNAL_TENANT_ID }}
+      EXTERNAL_TENANT_SUBDOMAIN: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
+      EXTERNAL_TENANT_DATA_LOCATION: ${{ vars.EXTERNAL_TENANT_DATA_LOCATION }}
+      MOBILE_REDIRECT_URI: ${{ vars.MOBILE_REDIRECT_URI }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      TF_VAR_environment: ${{ inputs.environment }}
+      TF_VAR_external_tenant_id: ${{ vars.EXTERNAL_TENANT_ID }}
+      TF_VAR_external_directory_client_id: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
+      TF_VAR_use_oidc: "true"
+      TF_VAR_tenant_subdomain: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
+      TF_VAR_tenant_primary_domain: ${{ format('{0}.onmicrosoft.com', vars.EXTERNAL_TENANT_SUBDOMAIN) }}
+      TF_VAR_tenant_data_location: ${{ vars.EXTERNAL_TENANT_DATA_LOCATION }}
+      TF_VAR_mobile_redirect_uri: ${{ vars.MOBILE_REDIRECT_URI }}
+    defaults:
+      run:
+        working-directory: bootstrap/external-directory
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify target and protected configuration
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          expected="APPLY olga-external-directory-$DEPLOY_ENVIRONMENT"
+          if [[ "$CONFIRMATION" != "$expected" ]]; then
+            echo "::error::Confirmation must be exactly: $expected"
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "dev" && "$GITHUB_REF" != "refs/heads/develop" ]]; then
+            echo "::error::Dev directory configuration must run from develop."
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "prd" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Production directory configuration must run from main."
+            exit 1
+          fi
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
+            TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER \
+            EXTERNAL_DIRECTORY_CLIENT_ID EXTERNAL_TENANT_ID EXTERNAL_TENANT_SUBDOMAIN \
+            EXTERNAL_TENANT_DATA_LOCATION MOBILE_REDIRECT_URI GOOGLE_CLIENT_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required $DEPLOY_ENVIRONMENT GitHub Environment variable $name is not configured."
+              exit 1
+            fi
+          done
+          if [[ "$DEPLOY_ENVIRONMENT" == "dev" && "$EXTERNAL_TENANT_SUBDOMAIN" != *dev ]]; then
+            echo "::error::The dev external tenant subdomain must end in dev."
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "prd" && "$EXTERNAL_TENANT_SUBDOMAIN" == *dev ]]; then
+            echo "::error::The prd external tenant subdomain must not use the dev suffix."
+            exit 1
+          fi
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Sign in to the external tenant with OIDC
+        uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
+          tenant-id: ${{ vars.EXTERNAL_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Create or rotate the Google provider
+        id: google
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        env:
+          OLGA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OLGA_GOOGLE_CLIENT_SECRET)) {
+            throw 'GOOGLE_CLIENT_SECRET is not configured in the selected GitHub Environment.'
+          }
+          $providerId = .\scripts\bootstrap-google-identity-provider.ps1 `
+            -Environment $env:DEPLOY_ENVIRONMENT `
+            -TenantId $env:EXTERNAL_TENANT_ID `
+            -TenantSubdomain $env:EXTERNAL_TENANT_SUBDOMAIN `
+            -GoogleClientId $env:GOOGLE_CLIENT_ID
+          if ($providerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
+            throw 'The Google bootstrap did not return one valid provider object ID.'
+          }
+          "provider_id=$providerId" >> $env:GITHUB_OUTPUT
+
+      - name: Initialize isolated directory state
+        shell: bash
+        run: |
+          terraform init -input=false -reconfigure \
+            -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
+            -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
+            -backend-config="container_name=$TFSTATE_CONTAINER" \
+            -backend-config="key=olga/external-directory/${{ inputs.environment }}.tfstate" \
+            -backend-config="tenant_id=$ARM_TENANT_ID" \
+            -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Validate directory configuration
+        run: terraform validate -no-color
+
+      - name: Create saved directory plan
+        shell: bash
+        env:
+          TF_VAR_google_identity_provider_id: ${{ steps.google.outputs.provider_id }}
+        run: terraform plan -input=false -lock-timeout=5m -out=directory.tfplan
+
+      - name: Review plan boundary
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          terraform show -json directory.tfplan > "$RUNNER_TEMP/directory-plan.json"
+          deletes=$(jq '[.resource_changes[]? | select(.change.actions | index("delete"))] | length' "$RUNNER_TEMP/directory-plan.json")
+          creates=$(jq '[.resource_changes[]? | select(.change.actions == ["create"])] | length' "$RUNNER_TEMP/directory-plan.json")
+          updates=$(jq '[.resource_changes[]? | select(.change.actions == ["update"])] | length' "$RUNNER_TEMP/directory-plan.json")
+          rm -f "$RUNNER_TEMP/directory-plan.json"
+          if [[ "$deletes" -ne 0 ]]; then
+            echo "::error::External directory workflow refuses every delete or replacement action."
+            exit 1
+          fi
+          {
+            echo "### External directory plan"
+            echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
+            echo "- Create: $creates"
+            echo "- Update: $updates"
+            echo "- Delete/replace: $deletes"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply saved directory plan
+        run: terraform apply -input=false -lock-timeout=10m directory.tfplan
+
+      - name: Publish non-secret directory outputs
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          external_identity=$(terraform output -raw external_identity_json)
+          {
+            echo "### External ID directory configured"
+            echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
+            echo "- User flow: \`$(terraform output -raw user_flow_name)\`"
+            echo "- Google provider object ID is non-secret and remains environment-specific."
+            echo
+            echo "Set the matching GitHub Environment variable \`EXTERNAL_IDENTITY\` to:"
+            echo
+            echo '```json'
+            echo "$external_identity"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

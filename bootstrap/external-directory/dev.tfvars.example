@@ -1,0 +1,9 @@
+environment           = "dev"
+external_tenant_id    = "<dev-external-tenant-id>"
+tenant_subdomain      = "<dev-external-tenant-subdomain>"
+tenant_primary_domain = "<dev-external-tenant-subdomain>.onmicrosoft.com"
+tenant_data_location  = "<dev-external-tenant-location>"
+mobile_redirect_uri   = "<dev-mobile-redirect-uri>"
+
+# Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the dev external tenant.
+google_identity_provider_id = "<dev-google-identity-provider-object-id>"

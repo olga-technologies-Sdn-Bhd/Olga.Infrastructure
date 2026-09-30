@@ -86,6 +86,12 @@ jobs:
       - name: Validate External ID tenant bootstrap
         run: terraform -chdir=bootstrap/external-tenant validate -no-color
 
+      - name: Initialize External ID directory bootstrap without backend
+        run: terraform -chdir=bootstrap/external-directory init -backend=false -input=false
+
+      - name: Validate External ID directory bootstrap
+        run: terraform -chdir=bootstrap/external-directory validate -no-color
+
       - name: Install TFLint
         shell: bash
         run: |

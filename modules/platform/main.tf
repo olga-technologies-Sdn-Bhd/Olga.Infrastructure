@@ -26,6 +26,12 @@ resource "azurerm_role_assignment" "nlp_acr_pull" {
   principal_id         = var.nlp_identity_principal_id
 }
 
+resource "azurerm_role_assignment" "nlp_worker_acr_pull" {
+  scope                = var.acr_id
+  role_definition_name = "AcrPull"
+  principal_id         = var.worker_identity_principal_id
+}
+
 resource "azurerm_role_assignment" "core_deploy_acr_push" {
   scope                            = var.acr_id
   role_definition_name             = "AcrPush"
@@ -140,6 +146,12 @@ resource "azurerm_container_app" "core_api" {
     identity            = var.core_identity_id
   }
 
+  secret {
+    name                = "identity-protection-master-key"
+    key_vault_secret_id = var.identity_master_key_secret_uri
+    identity            = var.core_identity_id
+  }
+
   dynamic "registry" {
     for_each = var.core_application_delivery_enabled ? [1] : []
     content {
@@ -169,6 +181,10 @@ resource "azurerm_container_app" "core_api" {
       env {
         name        = "ServiceAuthorization__Token"
         secret_name = "service-token"
+      }
+      env {
+        name        = "IdentityProtection__MasterKeyBase64"
+        secret_name = "identity-protection-master-key"
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
@@ -274,6 +290,10 @@ resource "azurerm_container_app" "nlp_api" {
         value = var.environment == "prod" ? "Production" : "Development"
       }
       env {
+        name  = "Hosting__AzureContainerAppsIngress"
+        value = "true"
+      }
+      env {
         name        = "ConnectionStrings__PostgreSql"
         secret_name = "postgresql"
       }
@@ -283,11 +303,27 @@ resource "azurerm_container_app" "nlp_api" {
       }
       env {
         name  = "EmbeddingProvider"
-        value = "Fake"
+        value = "Azure"
       }
       env {
         name  = "EmbeddingProcessing__Mode"
-        value = "Inline"
+        value = "Queued"
+      }
+      env {
+        name  = "AzureOpenAI__Endpoint"
+        value = try(azurerm_cognitive_account.openai[0].endpoint, "")
+      }
+      env {
+        name  = "AzureOpenAI__DeploymentName"
+        value = var.azure_openai_embedding_deployment_name
+      }
+      env {
+        name  = "AzureOpenAI__Dimensions"
+        value = "1536"
+      }
+      env {
+        name  = "AzureOpenAI__ManagedIdentityClientId"
+        value = var.nlp_identity_client_id
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
@@ -321,8 +357,6 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   ingress {
-    # The NLP API publishes its Swagger UI directly, so it must have public
-    # ingress just like the Core API to be reachable from a web browser.
     external_enabled = true
     target_port      = var.nlp_application_delivery_enabled ? 8080 : 80
     transport        = "auto"
@@ -337,11 +371,111 @@ resource "azurerm_container_app" "nlp_api" {
     ignore_changes = [template[0].container[0].image]
   }
 
-  depends_on = [azurerm_role_assignment.nlp_acr_pull]
+  depends_on = [
+    azurerm_role_assignment.nlp_acr_pull,
+    azurerm_role_assignment.nlp_openai_user,
+    azurerm_cognitive_deployment.embedding,
+    azurerm_private_endpoint.openai,
+  ]
 }
 
 resource "azurerm_role_assignment" "nlp_deploy_container_app" {
   scope                            = azurerm_container_app.nlp_api.id
+  role_definition_name             = "Container Apps Contributor"
+  principal_id                     = var.nlp_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_container_app" "nlp_worker" {
+  name                         = "ca-olga-nlp-worker-${var.environment}"
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  resource_group_name          = var.resource_group_name
+  workload_profile_name        = "Consumption"
+  revision_mode                = "Single"
+  tags                         = var.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.worker_identity_id]
+  }
+
+  secret {
+    name                = "postgresql"
+    key_vault_secret_id = var.postgres_connection_secret_uri
+    identity            = var.worker_identity_id
+  }
+
+  dynamic "registry" {
+    for_each = var.nlp_worker_application_delivery_enabled ? [1] : []
+    content {
+      server   = var.acr_login_server
+      identity = var.worker_identity_id
+    }
+  }
+
+  template {
+    min_replicas = 1
+    max_replicas = 1
+
+    container {
+      name   = "nlp-worker"
+      image  = var.nlp_worker_image
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name  = "DOTNET_ENVIRONMENT"
+        value = var.environment == "prod" ? "Production" : "Development"
+      }
+      env {
+        name        = "ConnectionStrings__PostgreSql"
+        secret_name = "postgresql"
+      }
+      env {
+        name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+        value = var.application_insights_connection_string
+      }
+      env {
+        name  = "EmbeddingProvider"
+        value = "Azure"
+      }
+      env {
+        name  = "AzureOpenAI__Endpoint"
+        value = try(azurerm_cognitive_account.openai[0].endpoint, "")
+      }
+      env {
+        name  = "AzureOpenAI__DeploymentName"
+        value = var.azure_openai_embedding_deployment_name
+      }
+      env {
+        name  = "AzureOpenAI__Model"
+        value = "text-embedding-3-small"
+      }
+      env {
+        name  = "AzureOpenAI__Dimensions"
+        value = "1536"
+      }
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = var.worker_identity_client_id
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [
+    azurerm_role_assignment.nlp_worker_acr_pull,
+    azurerm_role_assignment.nlp_worker_openai_user,
+    azurerm_cognitive_deployment.embedding,
+    azurerm_private_endpoint.openai,
+  ]
+}
+
+resource "azurerm_role_assignment" "nlp_deploy_worker_container_app" {
+  scope                            = azurerm_container_app.nlp_worker.id
   role_definition_name             = "Container Apps Contributor"
   principal_id                     = var.nlp_deploy_identity_principal_id
   skip_service_principal_aad_check = true
@@ -404,20 +538,20 @@ resource "azurerm_cognitive_account" "openai" {
   count = var.enable_azure_openai ? 1 : 0
 
   name                          = "aoai-olga-${var.suffix}"
-  location                      = var.location
+  location                      = var.azure_openai_location
   resource_group_name           = var.resource_group_name
   kind                          = "OpenAI"
   sku_name                      = "S0"
   custom_subdomain_name         = "aoai-olga-${var.suffix}"
   local_auth_enabled            = false
-  public_network_access_enabled = true
+  public_network_access_enabled = false
   tags                          = var.tags
 }
 
 resource "azurerm_cognitive_deployment" "embedding" {
   count = var.enable_azure_openai ? 1 : 0
 
-  name                 = "text-embedding-3-small"
+  name                 = var.azure_openai_embedding_deployment_name
   cognitive_account_id = azurerm_cognitive_account.openai[0].id
 
   model {
@@ -428,8 +562,73 @@ resource "azurerm_cognitive_deployment" "embedding" {
 
   sku {
     name     = "Standard"
-    capacity = 10
+    capacity = var.azure_openai_embedding_capacity
   }
+}
+
+resource "azurerm_private_dns_zone" "openai" {
+  count = var.enable_azure_openai ? 1 : 0
+
+  name                = "privatelink.openai.azure.com"
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "openai" {
+  count = var.enable_azure_openai ? 1 : 0
+
+  name                  = "link-openai-${var.environment}"
+  resource_group_name   = var.resource_group_name
+  private_dns_zone_name = azurerm_private_dns_zone.openai[0].name
+  virtual_network_id    = var.virtual_network_id
+  tags                  = var.tags
+}
+
+resource "azurerm_private_endpoint" "openai" {
+  count = var.enable_azure_openai ? 1 : 0
+
+  name                = "pe-aoai-${var.environment}"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  subnet_id           = var.private_endpoint_subnet_id
+  tags                = var.tags
+
+  private_service_connection {
+    name                           = "psc-aoai"
+    private_connection_resource_id = azurerm_cognitive_account.openai[0].id
+    subresource_names              = ["account"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "openai"
+    private_dns_zone_ids = [azurerm_private_dns_zone.openai[0].id]
+  }
+
+  # Cognitive account creation can return while Azure still reports the
+  # provisioning state as Accepted. The successful model deployment proves
+  # the account data plane is ready; the DNS link also completes before the
+  # endpoint is attached, avoiding the initial control-plane race.
+  depends_on = [
+    azurerm_cognitive_deployment.embedding,
+    azurerm_private_dns_zone_virtual_network_link.openai,
+  ]
+}
+
+resource "azurerm_role_assignment" "nlp_openai_user" {
+  count = var.enable_azure_openai ? 1 : 0
+
+  scope                = azurerm_cognitive_account.openai[0].id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = var.nlp_identity_principal_id
+}
+
+resource "azurerm_role_assignment" "nlp_worker_openai_user" {
+  count = var.enable_azure_openai ? 1 : 0
+
+  scope                = azurerm_cognitive_account.openai[0].id
+  role_definition_name = "Cognitive Services OpenAI User"
+  principal_id         = var.worker_identity_principal_id
 }
 
 resource "azurerm_api_management" "this" {

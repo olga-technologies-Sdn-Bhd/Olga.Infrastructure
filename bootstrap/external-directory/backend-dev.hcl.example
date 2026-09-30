@@ -1,0 +1,7 @@
+resource_group_name  = "rg-olga-tfstate"
+storage_account_name = "stolgatfstatee0bb013f"
+container_name       = "tfstate"
+key                  = "olga/external-directory/dev.tfstate"
+use_azuread_auth     = true
+tenant_id            = "9972baa6-9591-43d7-8b13-59da8e6f1a72"
+subscription_id      = "e0bb013f-a8af-4d60-9c5b-0140b361f257"

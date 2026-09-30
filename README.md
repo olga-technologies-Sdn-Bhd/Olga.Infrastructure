@@ -2,7 +2,7 @@
 
 Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID email OTP setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md); the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -13,7 +13,8 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
 - Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
-- Core and NLP APIs with external HTTPS ingress for browser-based Swagger access
+- Core and NLP APIs with external HTTPS ingress
+- Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
@@ -30,7 +31,7 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
-After the matching Entra directory objects have been created, add the non-secret `external_identity` object from `environments/dev.external-identity.tfvars.example`. Production uses its own tenant and the separate `environments/prd.external-identity.tfvars.example` values. External tenant creation itself is included in `bootstrap/external-tenant`; the dev tenant is created on demand by the manual **External ID - Bootstrap Dev Tenant** GitHub workflow.
+External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID Directory - Configure** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and apply `bootstrap/external-directory`. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. The directory root creates the API and public-mobile registrations, service principals, redirect URI, delegated scope, preauthorization, tenant-wide permission grant, and the Email OTP plus Google customer user flow. Production uses an independent tenant, OIDC identity, Google credential, provider ID, and state, and remains manual-only.
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `
@@ -48,7 +49,7 @@ terraform plan -out=dev.tfplan
 terraform apply dev.tfplan
 ```
 
-The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; Container Apps scaling from zero to one replica; and 0.1 GB/day telemetry caps. Service Bus, API Management, Static Web Apps, Azure OpenAI, Content Safety, SignalR, and Notification Hubs remain disabled.
+The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI and NLP application delivery are enabled; Service Bus remains disabled because the NLP worker polls PostgreSQL. API Management, Static Web Apps, Content Safety, SignalR, and Notification Hubs remain disabled.
 
 The first apply uses Microsoft's public Container Apps bootstrap image. Application repositories own subsequent immutable image revisions; Terraform owns identities, secrets, registry authentication, ingress, and ports. Core and NLP are independently configurable and both use port `8080` by default:
 
@@ -59,11 +60,13 @@ nlp_application_delivery_enabled  = true
 nlp_health_probes_enabled          = true
 ```
 
-The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush` plus `Container Apps Contributor` on their own app. The database deployment identity receives `AcrPush` plus `Container Apps Jobs Operator` on the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
+The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush`. The Core deployment identity receives `Container Apps Contributor` scoped only to the Core API, while the NLP deployment identity receives `Container Apps Contributor` scoped separately to both the NLP API and NLP worker. The database deployment identity receives `Container Apps Jobs Operator` scoped only to the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
 
-Both Container Apps have external HTTPS ingress. After applying Terraform, retrieve the browser-ready Swagger UI addresses with:
+The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
+
+The API URL outputs remain available with:
 
 ```powershell
 terraform output -raw core_swagger_url
@@ -85,12 +88,12 @@ Changing the already-created dev server from delegated-subnet networking to this
 ## Application readiness
 
 - Core API expects port `8080`, `/health`, `/ready`, `ConnectionStrings__PostgreSql`, and `ServiceAuthorization__Token`.
-- NLP API expects the same probes and secrets. Development sets `EmbeddingProvider=Fake` and `EmbeddingProcessing__Mode=Inline`.
-- Enable Azure OpenAI only after the NLP adapter is implemented and regional model quota is approved.
+- NLP API expects the same probes and secrets. It uses `EmbeddingProvider=Azure` and `EmbeddingProcessing__Mode=Queued`; evaluation endpoints retain direct managed-identity access to Azure OpenAI.
+- The NLP worker remains at one replica for PostgreSQL polling and uses the same private Azure OpenAI endpoint with its own managed identity.
 - API Management is not enabled by default; enable it after the OpenAPI import, OIDC validation, throttling, and policy configuration are defined.
 
 ## Mobile identity boundary
 
-Microsoft Entra External ID owns email OTP and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers. It does not store OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+Microsoft Entra External ID owns Email OTP, Google federation, and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers and may associate a non-secret Google provider object ID. It does not store the Google client secret, OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
 
 Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

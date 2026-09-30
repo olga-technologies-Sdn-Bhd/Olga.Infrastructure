@@ -45,6 +45,8 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 
 The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 
+The protected `.github/workflows/external-directory-configure.yml` workflow configures the isolated `bootstrap/external-directory` root. Add these environment-scoped variables to `dev` and `prd`: `EXTERNAL_DIRECTORY_CLIENT_ID`, `EXTERNAL_TENANT_ID`, `EXTERNAL_TENANT_SUBDOMAIN`, `EXTERNAL_TENANT_DATA_LOCATION`, `MOBILE_REDIRECT_URI`, and `GOOGLE_CLIENT_ID`. Add `GOOGLE_CLIENT_SECRET` as an environment **secret**, never as a variable or workflow input. The workflow exposes it only to the Google-provider bootstrap process, passes only the returned non-secret provider object ID to Terraform, and applies the independent directory state key. The secret must never appear in Terraform variables, plans, artifacts, outputs, or state. Dev and prd use separate external tenants, OIDC applications, Google OAuth clients, provider object IDs, backends, variables, and secrets.
+
 ## Azure OIDC federation
 
 For each identity, create a GitHub Actions federated identity credential with issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, and one exact subject (replace `ORG/REPOSITORY`):
@@ -56,18 +58,21 @@ repo:ORG/REPOSITORY:environment:prd-plan
 repo:ORG/REPOSITORY:environment:prd
 ```
 
+The external-directory OIDC applications use the same environment subjects but exist inside their matching External ID tenants. For this repository the exact subjects are `repo:Ol-gaTechnologies/Olga.Infrastructure:environment:dev` and `repo:Ol-gaTechnologies/Olga.Infrastructure:environment:prd`. These applications have no client secret or certificate; grant only the Microsoft Graph application permissions documented in [ENTRA_EXTERNAL_ID.md](ENTRA_EXTERNAL_ID.md), with admin consent in that external tenant.
+
 Do not add secrets or broad repository/pull-request federated subjects to apply identities. GitHub Environment deployment-branch rules are part of this trust boundary.
 
 Application delivery uses separate identities managed by this Terraform project:
 
 - Core identity: `id-gh-olga-core-<environment>-deploy`
-- Core dev subject: `repo:Ol-gaTechnologies@306667340/Olga.Core@1358930841:environment:dev`
+- Core dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/Olga.Core@1358930841:environment:dev`
 - NLP identity: `id-gh-olga-nlp-<environment>-deploy`
-- NLP dev subject: `repo:Ol-gaTechnologies@306667340/olga-nlp-api@1356082344:environment:dev`
+- NLP dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-nlp-api@1356082344:environment:dev`
 - Database identity: `id-gh-olga-database-<environment>-deploy`
-- Database dev subject: `repo:Ol-gaTechnologies@306667340/olga-database@1356201535:environment:dev`
+- Database dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-database@1356201535:environment:dev`
 - Registry permission: each identity has `AcrPush` scoped to the environment ACR
-- API deployment permission: each API identity has `Container Apps Contributor` scoped only to its own Container App
+- Core deployment permission: the Core identity has `Container Apps Contributor` scoped only to the Core API Container App
+- NLP deployment permission: the NLP identity has separate `Container Apps Contributor` assignments scoped to the NLP API and NLP worker Container Apps
 - Database deployment permission: `Container Apps Jobs Operator` scoped only to the migration job
 
 After Terraform creates the identities, copy `core_deployment_identity_client_id`, `nlp_deployment_identity_client_id`, and `database_deployment_identity_client_id` to the matching repository GitHub Environment as `AZURE_CLIENT_ID`. Keep tenant, subscription, ACR login server, resource group, Container App, and migration-job settings aligned with the infrastructure outputs. Each application workflow owns image digest releases and supplies its revision suffix. The database workflow starts an exact image digest as a one-off job execution. Terraform intentionally ignores API image drift while continuing to manage all other Container App configuration; Azure generates a fresh suffix for any Terraform-driven template revision.

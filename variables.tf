@@ -83,6 +83,13 @@ variable "postgres_admin_username" {
   default = "olga_migration_admin"
 }
 
+variable "postgres_connection_string_override" {
+  description = "Optional development-only value for the postgresql-connection Key Vault secret. Production always uses the generated migration-administrator connection string."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "postgres_sku_name" {
   type    = string
   default = "B_Standard_B1ms"
@@ -170,6 +177,12 @@ variable "nlp_api_image" {
   default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
 }
 
+variable "nlp_worker_image" {
+  description = "NLP worker bootstrap image used when the Container App is created."
+  type        = string
+  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+}
+
 variable "use_acr_images" {
   description = "Compatibility switch that enables ACR delivery for both APIs. Prefer the Core-specific switch for a Core-only release."
   type        = bool
@@ -194,6 +207,12 @@ variable "nlp_application_delivery_enabled" {
   default     = true
 }
 
+variable "nlp_worker_application_delivery_enabled" {
+  description = "Configure the NLP worker to pull its workload image from ACR."
+  type        = bool
+  default     = true
+}
+
 variable "nlp_health_probes_enabled" {
   description = "Enable NLP liveness (/health) and database-readiness (/ready) probes."
   type        = bool
@@ -203,7 +222,7 @@ variable "nlp_health_probes_enabled" {
 variable "github_organization_subject" {
   description = "Immutable GitHub organization subject component in NAME@DATABASE_ID format."
   type        = string
-  default     = "Ol-gaTechnologies@306667340"
+  default     = "olga-technologies-Sdn-Bhd@324310778"
 
   validation {
     condition     = can(regex("^[^/@]+@[0-9]+$", var.github_organization_subject))
@@ -265,14 +284,43 @@ variable "enable_admin_static_web_app" {
 }
 
 variable "enable_azure_openai" {
-  description = "Enable only after regional availability and model quota are approved."
+  description = "Provision the private Azure OpenAI account and embedding deployment."
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "azure_openai_location" {
+  description = "Azure region approved for the Azure OpenAI embedding deployment; it may differ from the primary workload region."
+  type        = string
+  default     = "australiaeast"
 }
 
 variable "azure_openai_model_version" {
-  type    = string
-  default = "1"
+  description = "Approved Azure model catalog version for text-embedding-3-small."
+  type        = string
+  default     = "1"
+
+  validation {
+    condition     = var.azure_openai_model_version == "1"
+    error_message = "text-embedding-3-small currently requires the approved Azure model version 1."
+  }
+}
+
+variable "azure_openai_embedding_deployment_name" {
+  description = "Stable deployment name used by NLP workloads when requesting embeddings."
+  type        = string
+  default     = "text-embedding-3-small"
+}
+
+variable "azure_openai_embedding_capacity" {
+  description = "Standard deployment capacity in thousands of tokens per minute."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.azure_openai_embedding_capacity >= 1
+    error_message = "azure_openai_embedding_capacity must be at least 1."
+  }
 }
 
 variable "enable_content_safety" {

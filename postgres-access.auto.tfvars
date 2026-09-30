@@ -15,8 +15,8 @@ postgres_access_by_environment = {
     }
     firewall_rules = {
       sreedharan_dbeaver = {
-        start_ip_address = "49.43.231.239"
-        end_ip_address   = "49.43.231.239"
+        start_ip_address = "49.43.231.62"
+        end_ip_address   = "49.43.231.62"
       }
     }
   }

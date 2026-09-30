@@ -1,0 +1,9 @@
+environment           = "prd"
+external_tenant_id    = "<prd-external-tenant-id>"
+tenant_subdomain      = "<prd-tenant-subdomain>"
+tenant_primary_domain = "<prd-tenant-subdomain>.onmicrosoft.com"
+tenant_data_location  = "<prd-external-tenant-location>"
+mobile_redirect_uri   = "<prd-mobile-redirect-uri>"
+
+# Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the prd external tenant.
+google_identity_provider_id = "<prd-google-identity-provider-object-id>"

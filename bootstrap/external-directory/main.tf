@@ -1,0 +1,223 @@
+data "azuread_client_config" "current" {}
+
+locals {
+  api_display_name             = "olga_api_${var.environment}"
+  mobile_display_name          = "olga_mobile_${var.environment}"
+  user_flow_identity_providers = concat(
+    [{ id = "EmailOtpSignup-OAUTH" }],
+    var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }]
+  )
+}
+
+resource "random_uuid" "access_as_user_scope" {}
+
+resource "azuread_application_registration" "api" {
+  display_name                   = local.api_display_name
+  description                    = "OLGA ${var.environment} API"
+  sign_in_audience               = "AzureADMyOrg"
+  requested_access_token_version = 2
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azuread_application_owner" "api" {
+  application_id  = azuread_application_registration.api.id
+  owner_object_id = data.azuread_client_config.current.object_id
+}
+
+resource "azuread_application_identifier_uri" "api" {
+  application_id = azuread_application_registration.api.id
+  identifier_uri = "api://${azuread_application_registration.api.client_id}"
+}
+
+resource "azuread_application_permission_scope" "access_as_user" {
+  application_id = azuread_application_registration.api.id
+  scope_id       = random_uuid.access_as_user_scope.result
+  value          = "access_as_user"
+  type           = "User"
+
+  admin_consent_description  = "Allow this application to access OLGA as the signed-in user."
+  admin_consent_display_name = "Access OLGA as the signed-in user"
+  user_consent_description   = "Allow this application to access OLGA on your behalf."
+  user_consent_display_name  = "Access OLGA on your behalf"
+}
+
+resource "azuread_service_principal" "api" {
+  client_id                    = azuread_application_registration.api.client_id
+  app_role_assignment_required = false
+  owners                       = [data.azuread_client_config.current.object_id]
+}
+
+resource "azuread_application_registration" "mobile" {
+  display_name     = local.mobile_display_name
+  description      = "OLGA ${var.environment} public mobile application"
+  sign_in_audience = "AzureADMyOrg"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "azuread_application_owner" "mobile" {
+  application_id  = azuread_application_registration.mobile.id
+  owner_object_id = data.azuread_client_config.current.object_id
+}
+
+resource "azuread_application_redirect_uris" "mobile" {
+  application_id = azuread_application_registration.mobile.id
+  type           = "PublicClient"
+  redirect_uris  = [var.mobile_redirect_uri]
+}
+
+resource "azuread_application_api_access" "mobile_api" {
+  application_id = azuread_application_registration.mobile.id
+  api_client_id  = azuread_application_registration.api.client_id
+  scope_ids      = [azuread_application_permission_scope.access_as_user.scope_id]
+}
+
+removed {
+  from = azuread_application_fallback_public_client.mobile
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+resource "msgraph_update_resource" "mobile_public_client" {
+  url         = "applications/${azuread_application_registration.mobile.object_id}"
+  api_version = "v1.0"
+
+  body = {
+    isFallbackPublicClient = true
+  }
+
+  depends_on = [
+    azuread_application_redirect_uris.mobile,
+    azuread_application_api_access.mobile_api,
+  ]
+}
+
+resource "msgraph_update_resource" "mobile_native_authentication" {
+  url         = "applications/${azuread_application_registration.mobile.object_id}"
+  api_version = "v1.0"
+
+  body = {
+    nativeAuthenticationApisEnabled = "all"
+  }
+
+  depends_on = [msgraph_update_resource.mobile_public_client]
+}
+
+resource "azuread_application_pre_authorized" "mobile" {
+  application_id       = azuread_application_registration.api.id
+  authorized_client_id = azuread_application_registration.mobile.client_id
+  permission_ids       = [azuread_application_permission_scope.access_as_user.scope_id]
+}
+
+resource "azuread_service_principal" "mobile" {
+  client_id                    = azuread_application_registration.mobile.client_id
+  app_role_assignment_required = false
+  owners                       = [data.azuread_client_config.current.object_id]
+}
+
+resource "azuread_service_principal_delegated_permission_grant" "mobile_api" {
+  service_principal_object_id          = azuread_service_principal.mobile.object_id
+  resource_service_principal_object_id = azuread_service_principal.api.object_id
+  claim_values                         = [azuread_application_permission_scope.access_as_user.value]
+}
+
+resource "msgraph_resource" "signup_signin_user_flow" {
+  url         = "identity/authenticationEventsFlows"
+  api_version = "v1.0"
+
+  body = {
+    "@odata.type" = "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow"
+    displayName   = "olga_signup_signin_${var.environment}"
+    description   = "OLGA ${var.environment} customer sign-up and sign-in"
+    conditions = {
+      applications = {
+        includeApplications = [
+          {
+            appId = azuread_application_registration.mobile.client_id
+          }
+        ]
+      }
+    }
+    onAuthenticationMethodLoadStart = {
+      "@odata.type" = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
+      identityProviders = local.user_flow_identity_providers
+    }
+    onInteractiveAuthFlowStart = {
+      "@odata.type"   = "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp"
+      isSignUpAllowed = true
+    }
+    onAttributeCollection = {
+      "@odata.type" = "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp"
+      attributes = [
+        {
+          id                    = "email"
+          displayName           = "Email Address"
+          description           = "Email address of the user"
+          userFlowAttributeType = "builtIn"
+          dataType              = "string"
+        },
+        {
+          id                    = "displayName"
+          displayName           = "Display Name"
+          description           = "Display name of the user"
+          userFlowAttributeType = "builtIn"
+          dataType              = "string"
+        }
+      ]
+      attributeCollectionPage = {
+        views = [
+          {
+            inputs = [
+              {
+                attribute        = "email"
+                label            = "Email Address"
+                inputType        = "text"
+                hidden           = true
+                editable         = false
+                writeToDirectory = true
+                required         = true
+                validationRegEx  = "^.+@.+\\..+$"
+              },
+              {
+                attribute        = "displayName"
+                label            = "Display Name"
+                inputType        = "text"
+                hidden           = false
+                editable         = true
+                writeToDirectory = true
+                required         = false
+                validationRegEx  = "^[a-zA-Z_][0-9a-zA-Z_ ]*[0-9a-zA-Z_]+$"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+
+  response_export_values = {
+    id           = "id"
+    display_name = "displayName"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+
+    precondition {
+      condition     = data.azuread_client_config.current.tenant_id == var.external_tenant_id
+      error_message = "The delegated AzureAD session must target external_tenant_id; never associate a provider while authenticated to another environment's tenant."
+    }
+
+    precondition {
+      condition     = var.environment == "dev" ? endswith(var.tenant_subdomain, "dev") : !endswith(var.tenant_subdomain, "dev")
+      error_message = "The external tenant subdomain does not match the selected environment: dev must use the dev suffix, and prd must not use it."
+    }
+  }
+}
