@@ -180,9 +180,10 @@ try {
         clientSecret         = $clientSecret
     }
     $updateBody = @{
-        displayName  = 'Google'
-        clientId     = $GoogleClientId
-        clientSecret = $clientSecret
+        '@odata.type' = '#microsoft.graph.socialIdentityProvider'
+        displayName   = 'Google'
+        clientId      = $GoogleClientId
+        clientSecret  = $clientSecret
     }
 
     if ($googleProviders.Count -eq 0) {
