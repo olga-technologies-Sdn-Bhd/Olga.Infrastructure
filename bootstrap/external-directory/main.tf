@@ -1,8 +1,12 @@
 data "azuread_client_config" "current" {}
 
 locals {
-  api_display_name    = "olga_api_${var.environment}"
-  mobile_display_name = "olga_mobile_${var.environment}"
+  api_display_name             = "olga_api_${var.environment}"
+  mobile_display_name          = "olga_mobile_${var.environment}"
+  user_flow_identity_providers = concat(
+    [{ id = "EmailOtpSignup-OAUTH" }],
+    var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }]
+  )
 }
 
 resource "random_uuid" "access_as_user_scope" {}
@@ -131,7 +135,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
   body = {
     "@odata.type" = "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow"
     displayName   = "olga_signup_signin_${var.environment}"
-    description   = "OLGA ${var.environment} customer email OTP sign-up and sign-in"
+    description   = "OLGA ${var.environment} customer sign-up and sign-in"
     conditions = {
       applications = {
         includeApplications = [
@@ -143,11 +147,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
     }
     onAuthenticationMethodLoadStart = {
       "@odata.type" = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
-      identityProviders = [
-        {
-          id = "EmailOtpSignup-OAUTH"
-        }
-      ]
+      identityProviders = local.user_flow_identity_providers
     }
     onInteractiveAuthFlowStart = {
       "@odata.type"   = "#microsoft.graph.onInteractiveAuthFlowStartExternalUsersSelfServiceSignUp"
@@ -209,5 +209,15 @@ resource "msgraph_resource" "signup_signin_user_flow" {
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = data.azuread_client_config.current.tenant_id == var.external_tenant_id
+      error_message = "The delegated AzureAD session must target external_tenant_id; never associate a provider while authenticated to another environment's tenant."
+    }
+
+    precondition {
+      condition     = var.environment == "dev" ? endswith(var.tenant_subdomain, "dev") : !endswith(var.tenant_subdomain, "dev")
+      error_message = "The external tenant subdomain does not match the selected environment: dev must use the dev suffix, and prd must not use it."
+    }
   }
 }

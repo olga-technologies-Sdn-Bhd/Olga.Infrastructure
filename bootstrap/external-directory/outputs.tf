@@ -34,7 +34,7 @@ output "mobile_application_client_id" {
 }
 
 output "user_flow_id" {
-  description = "Microsoft Graph identifier of the email OTP sign-up and sign-in user flow."
+  description = "Microsoft Graph identifier of the customer sign-up and sign-in user flow."
   value       = msgraph_resource.signup_signin_user_flow.output.id
 }
 

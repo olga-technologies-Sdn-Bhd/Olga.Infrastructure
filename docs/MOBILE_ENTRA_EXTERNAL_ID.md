@@ -1,6 +1,6 @@
 # Mobile sign-up and sign-in with Microsoft Entra External ID
 
-This runbook is for the OLGA React Native/Expo application. It documents the existing Microsoft-hosted email OTP flow and the infrastructure prerequisite for replacing its **No account? Create one** branch with a native-authentication flow. The mobile application must never generate, send, log, persist, or validate OTP values itself; it may collect an OTP only to submit it directly to Microsoft Entra during native authentication.
+This runbook is for the OLGA React Native/Expo application. The same Microsoft-hosted user flow offers Email OTP and Google. It also documents the infrastructure prerequisite for replacing Email OTP's **No account? Create one** branch with a native-authentication flow. The mobile application must never receive the Google client secret or generate, send, log, persist, or validate OTP values itself; it may collect an OTP only to submit it directly to Microsoft Entra during native authentication.
 
 The mobile source code is not in this repository, so the client-side steps must be completed in the mobile repository. `bootstrap/external-directory` enables public-client flows and the native authentication APIs on the mobile registration. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
 
@@ -202,7 +202,7 @@ export function useEntraLogin() {
 }
 ```
 
-Connect `login()` to the app's **Sign up or sign in with email** button and disable the button while `loginEnabled` is false. Both new-customer sign-up and existing-customer sign-in use this one user flow:
+Connect `login()` to the app's **Sign up or sign in** button and disable the button while `loginEnabled` is false. The Microsoft-hosted page presents Email OTP and Google from the same environment-specific user flow. For Email OTP, new-customer sign-up and existing-customer sign-in follow this sequence:
 
 1. The app opens the system browser.
 2. The customer enters an email address on the Microsoft-hosted page.
@@ -213,6 +213,8 @@ Connect `login()` to the app's **Sign up or sign in with email** button and disa
 7. `expo-auth-session` checks the returned OAuth state.
 8. The app exchanges the authorization code with the PKCE verifier and no client secret.
 9. The app stores the resulting tokens in `expo-secure-store`.
+
+For Google, the customer selects Google on the hosted page, completes authentication with Google, and returns through the same registered callback and PKCE exchange. The Google client secret belongs only to the server-side Entra identity-provider configuration; it must never be placed in the mobile application or its build environment.
 
 This browser-delegated implementation cannot remove step 3. To provide a single email entry with no separate account-creation confirmation, replace this client flow with Microsoft Entra Native Authentication. Initiate authentication with the `registration_required` capability. For an existing identity, continue the email-OTP sign-in challenge; when Entra requires registration, continue directly into the email-OTP sign-up challenge without asking the customer to select **Create one** or re-enter the email. Keep the outward response identical for both paths to avoid exposing whether an email address is already registered. Create the customer identity only after Entra accepts the OTP, then use the returned continuation token to sign the customer in automatically.
 
@@ -258,7 +260,7 @@ const response = await fetch(`${coreApiUrl}/v1/...`, {
 });
 ```
 
-Current MVP limitation: Core API does not yet validate this header, and Core API and NLP API remain directly callable without authentication. Email OTP currently protects only the mobile sign-up/sign-in experience. Do not hide this limitation in the mobile UI or documentation, and do not treat a successful login as server-side authorization. The deferred enforcement work is recorded in [SECURITY_DEBT.md](SECURITY_DEBT.md).
+Current MVP limitation: Core API does not yet validate this header, and Core API and NLP API remain directly callable without authentication. Entra External ID currently protects only the mobile sign-up/sign-in experience. Do not hide this limitation in the mobile UI or documentation, and do not treat a successful login as server-side authorization. The deferred enforcement work is recorded in [SECURITY_DEBT.md](SECURITY_DEBT.md).
 
 ## 8. Sign out
 
@@ -285,7 +287,7 @@ Never log the authorization response object because it can contain a code or tok
 
 ## 10. End-to-end dev verification
 
-Use a real development build on a device, then verify both paths:
+Use a real development build on a device, then verify both Email OTP and Google:
 
 1. Start with no `olga.entra.session` secure-store entry.
 2. Tap **Sign up or sign in with email**.
@@ -300,6 +302,8 @@ Use a real development build on a device, then verify both paths:
 11. Sign out and confirm the secure-store entry is deleted.
 12. Repeat with the same email address and confirm existing-customer sign-in succeeds.
 13. Confirm cancel, incorrect/expired OTP, offline, and callback-error paths show safe retry behavior.
+14. Start a fresh hosted session, select Google, authenticate with an approved dev Google test identity, and confirm the same dev callback, issuer, audience, PKCE, secure-storage, refresh, and sign-out rules.
+15. Confirm both Email OTP and Google remain visible in `olga_signup_signin_dev` and that no Google secret is present in the mobile bundle or environment.
 
 For the direct-registration native flow, additionally verify that the customer enters the email only once, an unknown address proceeds directly to the OTP challenge without a **Create one** prompt, the account does not exist before successful OTP verification, registration automatically yields a signed-in session, and the UI does not reveal whether an email was already registered.
 
@@ -316,13 +320,14 @@ The infrastructure-side dev objects expected by this test are:
 
 ## 11. Production release gate
 
-Do not produce a production build until the separate production External ID tenant and its `olga_signup_signin_prd`, `olga_mobile_prd`, and `olga_api_prd` objects exist and have been tested. The production build must:
+Do not produce a production build until the separate production External ID tenant and its independent Google OAuth client/provider, `olga_signup_signin_prd`, `olga_mobile_prd`, and `olga_api_prd` objects exist and have been tested. The production build must:
 
 - accept only the production output set;
 - claim only the production redirect scheme (currently planned as `olga://auth`);
 - contain no dev tenant, client, scope, callback, token, or customer data;
 - fail its build/config validation when any production value is missing;
 - use the same browser-delegated Authorization Code with PKCE flow and secure-storage rules.
+- contain no Google client secret and use only the Google provider configured in the prd external tenant.
 
 Production infrastructure execution remains manual-only. Creating the dev setup does not create or modify the production tenant.
 
@@ -337,6 +342,7 @@ Before the mobile change is marked complete, confirm that:
 - the dev build claims `olga-dev://auth` for web fallback and does not contain a production callback;
 - the app requests `openid`, `profile`, `email`, `offline_access`, and the dev `access_as_user` scope, and contains no mobile client secret;
 - new-customer sign-up and existing-customer sign-in both complete on a physical device;
+- both Email OTP and Google complete through the matching environment's hosted user flow;
 - access, refresh, and ID tokens are stored only in OS-backed secure storage or kept in memory;
 - refresh-token rotation replaces the previous stored refresh token;
 - sign-out removes all local token material;

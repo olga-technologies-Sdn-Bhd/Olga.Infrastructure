@@ -2,7 +2,7 @@
 
 Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID email OTP setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md); the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md); the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -31,7 +31,7 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
-External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, `bootstrap/external-directory` creates the API and public-mobile registrations, service principals, redirect URI, delegated scope, preauthorization, tenant-wide permission grant, and the email-OTP customer user flow associated with the mobile application. Its `external_identity_json` output is the exact non-secret value required by the regular GitHub workflow. Production uses independent state and remains manual-only.
+External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID Directory - Configure** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and apply `bootstrap/external-directory`. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. The directory root creates the API and public-mobile registrations, service principals, redirect URI, delegated scope, preauthorization, tenant-wide permission grant, and the Email OTP plus Google customer user flow. Production uses an independent tenant, OIDC identity, Google credential, provider ID, and state, and remains manual-only.
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `
@@ -94,6 +94,6 @@ Changing the already-created dev server from delegated-subnet networking to this
 
 ## Mobile identity boundary
 
-Microsoft Entra External ID owns email OTP and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers. It does not store OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+Microsoft Entra External ID owns Email OTP, Google federation, and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers and may associate a non-secret Google provider object ID. It does not store the Google client secret, OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
 
 Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

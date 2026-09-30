@@ -18,6 +18,41 @@ variable "external_tenant_id" {
   }
 }
 
+variable "external_directory_client_id" {
+  description = "Optional client ID of the environment-specific GitHub OIDC application in the external tenant. Required only when use_oidc is true."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.external_directory_client_id == null || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.external_directory_client_id))
+    error_message = "external_directory_client_id must be null or a UUID."
+  }
+}
+
+variable "use_oidc" {
+  description = "Use workload identity federation for non-interactive directory deployment. Local delegated administration remains the default."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.use_oidc || var.external_directory_client_id != null
+    error_message = "external_directory_client_id is required when use_oidc is true."
+  }
+}
+
+variable "google_identity_provider_id" {
+  description = "Optional non-secret Microsoft Graph object ID of the Google identity provider in this external tenant. The Google client secret must never be passed to Terraform."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.google_identity_provider_id == null || can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.google_identity_provider_id))
+    error_message = "google_identity_provider_id must be null or a UUID returned by the Google identity-provider bootstrap for this environment's external tenant."
+  }
+}
+
 variable "tenant_subdomain" {
   description = "External tenant subdomain without onmicrosoft.com."
   type        = string

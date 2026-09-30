@@ -1,8 +1,8 @@
-# Microsoft Entra External ID email OTP
+# Microsoft Entra External ID customer sign-in
 
 This runbook configures Microsoft Entra External ID as the identity provider for the OLGA React Native/Expo mobile application. The supported external environments are exactly `dev` and `prd`; the established internal Terraform production value remains `prod`. Use a separate external tenant for each environment. Never copy customer identities, tokens, personal data, redirect URIs, or deployment credentials between them.
 
-Microsoft Entra owns OTP generation, delivery, validation, expiration, retry behavior, customer identity lifecycle, access tokens, refresh tokens, and sessions. OLGA must not generate, send, log, persist, or validate OTP values.
+The customer user flow supports Email OTP and, when its independently bootstrapped provider object ID is supplied, Google. Microsoft Entra owns OTP generation, delivery, validation, expiration, retry behavior, customer identity lifecycle, access tokens, refresh tokens, and sessions. OLGA must not generate, send, log, persist, or validate OTP values.
 
 Core API, NLP API, Swagger, health endpoints, and existing development identity shortcuts remain unauthenticated for this MVP. A mobile access token may be sent in the `Authorization` header, but Core currently ignores it. The token does not protect either API until the deferred work in [SECURITY_DEBT.md](SECURITY_DEBT.md) is completed.
 
@@ -10,11 +10,13 @@ Core API, NLP API, Swagger, health endpoints, and existing development identity 
 
 The isolated `bootstrap/external-tenant` Terraform root creates the External ID tenant resource through the repository's existing AzAPI provider. It uses Microsoft's preview `Microsoft.AzureActiveDirectory/ciamDirectories@2023-05-17-preview` resource, separate state per environment, and `prevent_destroy`. The manual-only `.github/workflows/bootstrap-dev-external-id.yml` workflow produces a guarded dev plan and does not run on pushes or pull requests. Microsoft requires a delegated user token for initial tenant creation, so GitHub OIDC cannot perform the apply; an authorized user performs that one-time apply locally.
 
-After the tenant exists, `bootstrap/external-directory` manages the API and public-mobile registrations, service principals, native redirect URI, delegated API scope, preauthorization, tenant-wide delegated permission grant, and the email-OTP customer user flow associated with the mobile application. It uses the AzureAD and Microsoft Graph providers against the external tenant while retaining state in the management subscription. No application secret or certificate is created. The main Terraform root consumes the generated non-secret object and emits mobile and future Core configuration.
+After the tenant exists, `scripts/bootstrap-google-identity-provider.ps1` creates or updates the Google social identity provider directly through Microsoft Graph. It reads the Google client secret only at runtime and emits only the provider object ID. `bootstrap/external-directory` then manages the API and public-mobile registrations, service principals, native redirect URI, delegated API scope, preauthorization, tenant-wide delegated permission grant, and the customer user flow associated with the mobile application. Terraform receives only the non-secret Google provider object ID; the Google client secret never enters configuration, plans, outputs, or state. No application secret or certificate is created.
 
 Microsoft references:
 
 - [Create an external-tenant sign-up and sign-in user flow](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-user-flow-sign-up-sign-in-customers)
+- [Add Google as an identity provider](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-google-federation-customers)
+- [Microsoft Graph identity provider API](https://learn.microsoft.com/en-us/graph/api/resources/identityproviderbase)
 - [Create a CIAM directory with Terraform AzAPI](https://learn.microsoft.com/en-us/azure/templates/microsoft.azureactivedirectory/ciamdirectories)
 - [Associate an application with a user flow](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-user-flow-add-application)
 - [Register an application](https://learn.microsoft.com/en-us/graph/auth-register-app-v2)
@@ -26,9 +28,9 @@ Microsoft references:
 Use least privilege and separate administrators for dev and prd where practical.
 
 - Tenant creation: an account permitted to create an external tenant and associate billing/subscription details.
-- User flow and identity-provider configuration: Microsoft Graph delegated `EventListener.ReadWrite.All` plus `External ID User Flow Administrator`, or a more privileged approved role.
-- Application registrations, scopes, and delegated permissions: `Application Administrator` or `Cloud Application Administrator`.
-- Tenant-wide admin consent: `Cloud Application Administrator`, `Privileged Role Administrator`, or another role authorized by the tenant's consent policy.
+- GitHub directory deployment identity: Microsoft Graph application permissions `IdentityProvider.ReadWrite.All`, `Organization.Read.All`, `Application.ReadWrite.All`, `DelegatedPermissionGrant.ReadWrite.All`, and `EventListener.ReadWrite.All`, with tenant-wide admin consent.
+- Initial permission consent: `Privileged Role Administrator`, Global Administrator, or another role authorized by the tenant's consent policy.
+- Optional local fallback: a delegated administrator with the corresponding Graph scopes and supported External Identity Provider Administrator, External ID User Flow Administrator, and application-administration roles.
 
 Do not use a customer account as an administrator. Protect administrator accounts with the organization's standard strong authentication and emergency-access controls.
 
@@ -60,32 +62,68 @@ Complete every step once for dev, then repeat it independently for prd with the 
 
 The tenant bootstrap deployment identity requires the approved tenant-creation role plus Azure permission to create the resource group and CIAM resource. Register the `Microsoft.AzureActiveDirectory` resource provider in the target subscription before the first plan if it is not already registered. Because the ARM resource uses a preview API, review Microsoft release notes before provider/API upgrades. Terraform is prevented from destroying the tenant resource.
 
-### 2. Create the directory applications and user flow with Terraform
+### 2. Prepare the Google Cloud web client
 
-Run `bootstrap/external-directory` once with an administrator signed into the new external tenant. It creates:
+Use a distinct Google OAuth Web client for each external environment. In Google Cloud, configure only the matching redirect URI shown by Microsoft Entra for that external tenant. Keep the client ID as a non-secret operator input, but keep the client secret in the approved secret manager. Never reuse the dev client, secret, authorized redirect URI, or Entra provider object ID in prd. Do not create mobile, API, certificate, or additional client credentials for this integration.
+
+Google Cloud setup is intentionally outside Terraform because putting the Google client secret in a Terraform resource or sensitive variable would still store it in Terraform state.
+
+### 3. Establish GitHub OIDC and store the Google credential
+
+Create one single-tenant application registration in each external tenant for `.github/workflows/external-directory-configure.yml`. Add one federated identity credential with issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, and the exact matching subject:
+
+```text
+dev: repo:Ol-gaTechnologies/Olga.Infrastructure:environment:dev
+prd: repo:Ol-gaTechnologies/Olga.Infrastructure:environment:prd
+```
+
+Grant the application the five Microsoft Graph **application** permissions listed under Required operator roles and grant tenant-wide admin consent. Do not create a client secret or certificate for this deployment identity. Record its application client ID as `EXTERNAL_DIRECTORY_CLIENT_ID` in the matching GitHub Environment.
+
+Configure these additional values independently in GitHub Environments `dev` and `prd`:
+
+| Name | GitHub type | Value |
+| --- | --- | --- |
+| `EXTERNAL_DIRECTORY_CLIENT_ID` | Variable | Matching external-tenant OIDC application client ID |
+| `EXTERNAL_TENANT_ID` | Variable | Matching external tenant ID |
+| `EXTERNAL_TENANT_SUBDOMAIN` | Variable | Matching subdomain without `.onmicrosoft.com` |
+| `EXTERNAL_TENANT_DATA_LOCATION` | Variable | Tenant creation location |
+| `MOBILE_REDIRECT_URI` | Variable | Exact environment-specific native callback |
+| `GOOGLE_CLIENT_ID` | Variable | Matching Google OAuth Web client ID |
+| `GOOGLE_CLIENT_SECRET` | Secret | Matching Google OAuth Web client secret |
+
+The existing management-tenant variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER` remain responsible only for the remote-state backend. The external-directory application authenticates separately to Microsoft Graph through OIDC. Never copy any dev variable, secret, provider ID, federated credential, or callback into prd.
+
+The workflow exposes `GOOGLE_CLIENT_SECRET` only to the PowerShell bootstrap step. The script verifies the token tenant, required Graph application roles, tenant verified domain, and environment naming before changing anything; suppresses Graph response bodies on errors; creates or updates exactly one Google provider; and emits only its non-secret object ID. That ID is passed to Terraform as an ephemeral input and the secret never enters Terraform configuration, plans, outputs, or state.
+
+### 4. Create the directory applications and user flow with Terraform
+
+Run the protected **External ID Directory - Configure** workflow after the OIDC application and GitHub Environment values exist. It creates:
 
 - `olga_api_<environment>` as a single-tenant API registration and service principal;
 - `api://<api-client-id>` and the enabled delegated `access_as_user` scope using access-token version 2;
 - `olga_mobile_<environment>` as a single-tenant public-client registration and service principal, with public-client flows and the native authentication APIs enabled;
 - the exact environment-specific native redirect URI;
 - the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
-- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
+- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, optional Google association from `google_identity_provider_id`, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
 
 The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Terraform explicitly sets `isFallbackPublicClient` to `true` and then, in a separate Microsoft Graph update, sets `nativeAuthenticationApisEnabled` to `all`; both settings are required for native authentication. Native authentication lets the mobile app accept one email address, request the `registration_required` capability, and continue an unknown address into sign-up without showing Microsoft's **No account? Create one** branch. The account must still be created only after Entra verifies the emailed OTP. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 
+If `google_identity_provider_id` is omitted or `null`, Email OTP remains the sole provider. When it is supplied, Terraform always retains `EmailOtpSignup-OAUTH` and adds Google. The provider ID is resolved through the Microsoft Graph provider authenticated to `external_tenant_id`, so an ID copied from the other environment cannot be associated successfully. Google credential rotation updates the provider in place and does not recreate the user flow, mobile application, or API registration.
+
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 
-### 3. Test before publishing values
+### 5. Test before publishing values
 
 Use **Run user flow** in the matching external tenant and verify:
 
 1. A new test customer can request and submit an email OTP and is created in that tenant.
 2. The same customer can sign in again with a new email OTP.
-3. The hosted page redirects only to the matching mobile URI.
-4. Authorization Code with PKCE returns tokens without a client secret.
-5. The requested delegated scope is `api://<matching-api-client-id>/access_as_user`.
-6. The access-token audience matches the API, and the issuer exactly matches the selected tenant's OpenID discovery metadata.
-7. No OTP, access token, refresh token, authorization code, or customer record appears in Terraform state, application logs, analytics, or PostgreSQL.
+3. Google is shown alongside Email OTP, and a Google test customer can complete sign-up/sign-in.
+4. The hosted page redirects only to the matching mobile URI.
+5. Authorization Code with PKCE returns tokens without a mobile client secret.
+6. The requested delegated scope is `api://<matching-api-client-id>/access_as_user`.
+7. The access-token audience matches the API, and the issuer exactly matches the selected tenant's OpenID discovery metadata.
+8. No Google client secret, OTP, access token, refresh token, authorization code, or customer record appears in Terraform state, plans, application logs, analytics, or PostgreSQL.
 
 Delete disposable test customers according to the tenant's test-data policy. Never run prd testing with a dev callback or a copied dev identity.
 
@@ -157,7 +195,7 @@ For the direct-registration experience, the app uses native authentication: it s
 - Swagger remains reachable without a token and must be described operationally as **unauthenticated during the temporary MVP phase**.
 - Monitor Core/NLP request volume and failures, plus NLP latency/failures, in each environment's Application Insights. Alert thresholds remain an operator decision based on observed MVP traffic.
 
-No OTP or token value belongs in PostgreSQL, Terraform variables, Terraform outputs, state, plan artifacts, logs, tickets, or chat.
+No Google client secret, OTP, or token value belongs in PostgreSQL, Terraform variables, Terraform outputs, state, plan artifacts, logs, tickets, or chat. Core API and NLP API remain public: bearer tokens are not validated or enforced by either API.
 
 ## Validation and deployment commands
 
@@ -172,6 +210,9 @@ terraform validate -no-color
 terraform -chdir=bootstrap/external-tenant fmt -check
 terraform -chdir=bootstrap/external-tenant init -backend=false -input=false
 terraform -chdir=bootstrap/external-tenant validate -no-color
+terraform -chdir=bootstrap/external-directory fmt -check
+terraform -chdir=bootstrap/external-directory init -backend=false -input=false
+terraform -chdir=bootstrap/external-directory validate -no-color
 tflint --init
 tflint --recursive --format compact
 trivy config --exit-code 1 --severity HIGH,CRITICAL --format table .
@@ -192,22 +233,18 @@ terraform -chdir=bootstrap/external-tenant apply -input=false -lock-timeout=10m 
 terraform -chdir=bootstrap/external-tenant output
 ```
 
-Create the directory applications using the existing state storage and a delegated administrator session. Both tenant logins are required: the management tenant owns the state account, while the External ID tenant owns the directory objects.
+After the tenant exists and step 3 is complete, dispatch the directory workflow from the matching reviewed branch:
 
 ```powershell
-az login --tenant 9972baa6-9591-43d7-8b13-59da8e6f1a72
-az login --tenant d6b05a66-a3b7-442c-b56f-d4d7a9e154ba --allow-no-subscriptions
-az account set --subscription e0bb013f-a8af-4d60-9c5b-0140b361f257
-
-Copy-Item bootstrap/external-directory/dev.tfvars.example bootstrap/external-directory/dev.tfvars
-Copy-Item bootstrap/external-directory/backend-dev.hcl.example bootstrap/external-directory/backend-dev.hcl
-terraform -chdir=bootstrap/external-directory init
-terraform -chdir=bootstrap/external-directory plan -input=false -lock-timeout=5m -var-file=dev.tfvars -out=dev-directory.tfplan
-terraform -chdir=bootstrap/external-directory apply -input=false -lock-timeout=10m dev-directory.tfplan
-$externalIdentity = terraform -chdir=bootstrap/external-directory output -raw external_identity_json
+gh workflow run external-directory-configure.yml `
+  --ref develop `
+  -f environment=dev `
+  -f 'confirmation=APPLY olga-external-directory-dev'
 ```
 
-Store `$externalIdentity` as the non-secret GitHub Environment variable named `EXTERNAL_IDENTITY` in both `dev-plan` and `dev`. Do not create a variable named `TF_VAR_external_identity`; the workflow maps `EXTERNAL_IDENTITY` to that process variable. Then run the normal dev workflow from `develop`.
+The workflow uses the protected `dev` GitHub Environment, signs in to the dev external tenant with OIDC, creates or rotates the Google provider, builds a saved Terraform plan, rejects every delete or replacement, applies that plan to `olga/external-directory/dev.tfstate`, and publishes the non-secret `external_identity_json` in the job summary. Copy that JSON to the `EXTERNAL_IDENTITY` variable in both `dev-plan` and `dev`, then run the normal main-stack workflow.
+
+After apply, open `olga_signup_signin_dev` in the dev external tenant and verify that its identity providers are exactly Email OTP and the dev Google provider. To rotate the credential later, update only the protected `GOOGLE_CLIENT_SECRET` value in `dev` and rerun the same workflow. The script updates the existing provider in place; the user flow and application registrations are not recreated.
 
 For optional local main-stack planning, place the same values in the ignored `environments/dev.external-identity.tfvars` file:
 
@@ -227,11 +264,10 @@ terraform -chdir=bootstrap/external-tenant init -input=false -reconfigure -backe
 terraform -chdir=bootstrap/external-tenant plan -input=false -lock-timeout=5m -var-file=prd.tfvars -out=prd-tenant.tfplan
 terraform -chdir=bootstrap/external-tenant apply -input=false -lock-timeout=10m prd-tenant.tfplan
 
-Copy-Item bootstrap/external-directory/prd.tfvars.example bootstrap/external-directory/prd.tfvars
-Copy-Item bootstrap/external-directory/backend-prd.hcl.example bootstrap/external-directory/backend-prd.hcl
-terraform -chdir=bootstrap/external-directory init -input=false -reconfigure -backend-config=backend-prd.hcl
-terraform -chdir=bootstrap/external-directory plan -input=false -lock-timeout=5m -var-file=prd.tfvars -out=prd-directory.tfplan
-terraform -chdir=bootstrap/external-directory apply -input=false -lock-timeout=10m prd-directory.tfplan
+gh workflow run external-directory-configure.yml `
+  --ref main `
+  -f environment=prd `
+  -f 'confirmation=APPLY olga-external-directory-prd'
 
 Copy-Item environments/prd.external-identity.tfvars.example environments/prd.external-identity.tfvars
 .\scripts\bootstrap-state.ps1 -SubscriptionId '<prd-subscription-id>' -Location '<approved-location>' -Environment prd -StorageAccountName '<state-account>' > backend-prd.hcl
