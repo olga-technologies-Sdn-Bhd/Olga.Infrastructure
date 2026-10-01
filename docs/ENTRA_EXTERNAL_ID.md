@@ -223,7 +223,7 @@ tflint --recursive --format compact
 trivy config --exit-code 1 --severity HIGH,CRITICAL --format table .
 ```
 
-Create the dev External ID tenant first. GitHub Actions can check the plan: open **Actions**, select **External ID - Plan Dev Tenant Bootstrap**, choose **Run workflow**, enter `PLAN olga-connect-dev`, and run it from the reviewed branch. The workflow uses the protected `dev` GitHub Environment, creates a saved plan, and rejects deletes and resources outside the bootstrap boundary. It intentionally does not apply because the initial CIAM tenant API requires delegated user authentication.
+Create the dev External ID tenant first. GitHub Actions can check the plan: open **Actions**, select **External ID - Plan Initial Dev Tenant Creation**, choose **Run workflow**, enter `PLAN olga-connect-dev`, and run it from the reviewed branch. The workflow uses the protected `dev` GitHub Environment, creates a saved plan, and rejects deletes and resources outside the bootstrap boundary. It intentionally does not apply because the initial CIAM tenant API requires delegated user authentication.
 
 Configure these non-secret variables on the `dev` GitHub Environment before dispatching the workflow: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER`. These are the same Azure identity variables used by the regular infrastructure action; the bootstrap workflow additionally verifies the approved dev subscription and management tenant. The OIDC identity must trust the `dev` environment subject and have access to the state container, resource group creation, CIAM directory creation, and resource-provider registration.
 

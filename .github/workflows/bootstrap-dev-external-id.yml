@@ -1,4 +1,4 @@
-name: External ID - Plan Dev Tenant Bootstrap
+name: External ID - Plan Initial Dev Tenant Creation
 
 on:
   workflow_dispatch:
