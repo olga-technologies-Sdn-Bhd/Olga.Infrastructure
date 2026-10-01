@@ -100,38 +100,10 @@ Microsoft Entra External ID owns Email OTP, Google and Apple federation, and mob
 
 ### React Native / Expo authentication handoff
 
-The mobile application continues to use the existing Microsoft Entra browser-delegated Authorization Code flow with PKCE. Google and Apple are presented by the same Entra-hosted page as Email OTP, so the mobile application must not add direct social-provider SDKs or provider credentials. All methods return through the same Entra callback and token exchange.
+The mobile application uses Microsoft Entra's browser-delegated Authorization Code flow with PKCE for Email OTP, Google, and Apple. A generic action opens the hosted chooser; optional provider-specific actions use `domain_hint=google` or `domain_hint=apple` against the same Entra authorization endpoint. All methods return through the same registered callback and token exchange. Do not add direct Google or Apple SDKs.
 
-Install the Expo-compatible packages in the mobile repository:
+The mobile build needs only the environment's non-secret Entra client ID, tenant ID, authority, redirect URI, and API scope. It must never contain the Google secret, Apple Service ID, Apple provider object ID, Team ID, Key ID, `.p8` key, OTPs, authorization codes, or tokens. Use an Expo development or standalone build for callback testing because Expo Go cannot claim the required custom scheme.
 
-```bash
-npx expo install expo-auth-session expo-crypto expo-web-browser expo-secure-store
-```
-
-Add these non-secret development settings:
-
-```dotenv
-EXPO_PUBLIC_ENVIRONMENT=dev
-EXPO_PUBLIC_ENTRA_CLIENT_ID=e8db01a0-3a93-48e0-86fa-68123e026088
-EXPO_PUBLIC_ENTRA_TENANT_ID=d6b05a66-a3b7-442c-b56f-d4d7a9e154ba
-EXPO_PUBLIC_ENTRA_AUTHORITY=https://olgaconnectdev.ciamlogin.com/
-EXPO_PUBLIC_ENTRA_REDIRECT_URI=olga-dev://auth
-EXPO_PUBLIC_OLGA_API_SCOPE=api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user
-```
-
-Register the callback scheme without replacing the mobile project's existing bundle and package identifiers:
-
-```json
-{
-  "expo": {
-    "scheme": "olga-dev",
-    "plugins": ["expo-secure-store"]
-  }
-}
-```
-
-Configure `expo-auth-session` with issuer `https://olgaconnectdev.ciamlogin.com/d6b05a66-a3b7-442c-b56f-d4d7a9e154ba/v2.0`, redirect URI `olga-dev://auth`, PKCE, and scopes `openid`, `profile`, `email`, `offline_access`, and `api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user`. Open the system browser, exchange the returned authorization code with the PKCE verifier and no client secret, then store tokens only in `expo-secure-store`. Use an Expo development or standalone build for callback testing; Expo Go does not claim the registered `olga-dev` scheme.
-
-The existing sign-up/sign-in button may remain unchanged: the Entra-hosted page displays Email OTP and every associated federated provider. Never add `GOOGLE_CLIENT_SECRET`, the Apple `.p8` key, or any other private credential to the mobile source, Expo environment, build configuration, logs, analytics, AsyncStorage, Redux persistence, or SQLite. The complete hook, refresh, sign-out, error-handling, and test examples are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
+The complete runtime values, Expo configuration, `useEntraLogin` hook, provider routing contract, refresh/sign-out behavior, and physical-device verification checklist are maintained in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
 
 Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

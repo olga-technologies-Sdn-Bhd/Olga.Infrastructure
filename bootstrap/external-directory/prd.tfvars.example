@@ -5,8 +5,8 @@ tenant_primary_domain = "<prd-tenant-subdomain>.onmicrosoft.com"
 tenant_data_location  = "<prd-external-tenant-location>"
 mobile_redirect_uri   = "<prd-mobile-redirect-uri>"
 
-# Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the prd external tenant.
-google_identity_provider_id = "<prd-google-identity-provider-object-id>"
+# Leave both provider IDs unset for the first Email OTP baseline apply. After each provider workflow succeeds,
+# uncomment its matching non-secret ID before any later plan so Terraform retains every association.
+# google_identity_provider_id = "<prd-google-identity-provider-object-id>"
 
-# Uncomment only after bootstrap-apple-identity-provider.ps1 configures the prd tenant.
 # apple_identity_provider_id = "<prd-apple-identity-provider-object-id>"

@@ -75,11 +75,13 @@ gh workflow run apple-identity-provider-configure.yml `
   -f 'confirmation=APPLY olga-apple-identity-provider-prd'
 ```
 
-Never copy the dev Service ID, key, private key, Entra domain, or return URL into prd. Schedule Apple credential renewal before its six-month expiration and rerun only the matching environment's Apple workflow after updating `APPLE_PRIVATE_KEY_P8` and, when changed, `APPLE_KEY_ID`.
+Never copy the dev Service ID, key, private key, Entra domain, or return URL into prd. Microsoft requires Apple federation credential renewal within six months. Before that deadline, rerun only the matching environment's Apple workflow with the still-valid `.p8` key. If the Apple key was revoked or replaced, update both `APPLE_PRIVATE_KEY_P8` and `APPLE_KEY_ID` first. Record the renewal owner and due date outside the repository; never store the private key here.
 
 ## Terraform source of truth
 
 `bootstrap/external-directory` accepts the optional non-secret `apple_identity_provider_id`. After Apple is configured, use the exact provider object ID printed by the matching workflow on any later directory-root Terraform plan so that a future user-flow update retains Apple. The private key must never be passed to Terraform.
+
+The React Native/Expo handoff, including the optional `domain_hint=apple` route and the rule that no Apple identifier or credential is added to the mobile environment, is maintained in [MOBILE_ENTRA_EXTERNAL_ID.md](MOBILE_ENTRA_EXTERNAL_ID.md#mobile-ui-provider-contract).
 
 Microsoft references:
 

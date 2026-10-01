@@ -9,6 +9,6 @@
 - API Management, Azure OpenAI, and the admin site are feature-gated because their product inputs are not final.
 - The initial database password enables schema bootstrap. Replace runtime database password use with Entra workload authentication before production.
 - Exactly two deployment environments are supported externally: `dev` and `prd`. The established Terraform values remain `dev` and `prod`; CI maps `prd` to `prod`, and unsupported values fail validation.
-- External tenant creation is isolated in `bootstrap/external-tenant` and uses the existing AzAPI provider with separate state. Google and Apple credentials are bootstrapped through independent Microsoft Graph workflows so they never enter Terraform state; Email OTP, federated-provider associations, user flows, application registrations, permissions, and consent remain directory bootstrap steps.
+- External tenant creation is isolated in `bootstrap/external-tenant` and uses the existing AzAPI provider with separate state. `bootstrap/external-directory` creates the Email OTP user-flow and application baseline. Independent Microsoft Graph workflows create or rotate Google and Apple and associate them with that existing flow, so provider credentials never enter Terraform state; later directory plans retain the associations by using only the non-secret provider object IDs.
 - Entra External ID Email OTP, Google, and Apple protect the mobile login experience only. Core and NLP remain unauthenticated under the accepted temporary risk recorded in `docs/SECURITY_DEBT.md`.
 
