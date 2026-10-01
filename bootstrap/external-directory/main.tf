@@ -5,7 +5,8 @@ locals {
   mobile_display_name          = "olga_mobile_${var.environment}"
   user_flow_identity_providers = concat(
     [{ id = "EmailOtpSignup-OAUTH" }],
-    var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }]
+    var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }],
+    var.apple_identity_provider_id == null ? [] : [{ id = var.apple_identity_provider_id }]
   )
 }
 

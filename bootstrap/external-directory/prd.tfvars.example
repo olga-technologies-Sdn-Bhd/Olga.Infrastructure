@@ -7,3 +7,6 @@ mobile_redirect_uri   = "<prd-mobile-redirect-uri>"
 
 # Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the prd external tenant.
 google_identity_provider_id = "<prd-google-identity-provider-object-id>"
+
+# Uncomment only after bootstrap-apple-identity-provider.ps1 configures the prd tenant.
+# apple_identity_provider_id = "Apple-Managed-OIDC"

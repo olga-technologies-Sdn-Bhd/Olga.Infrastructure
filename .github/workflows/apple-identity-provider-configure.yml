@@ -1,0 +1,128 @@
+name: Apple External ID - Configure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: External ID environment to configure
+        required: true
+        default: dev
+        type: choice
+        options: [dev, prd]
+      confirmation:
+        description: Enter APPLY olga-apple-identity-provider-<environment>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AZURE_CORE_OUTPUT: none
+
+jobs:
+  configure:
+    name: Configure ${{ inputs.environment }} Apple identity provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: external-directory-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      EXTERNAL_DIRECTORY_CLIENT_ID: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
+      EXTERNAL_TENANT_ID: ${{ vars.EXTERNAL_TENANT_ID }}
+      EXTERNAL_TENANT_SUBDOMAIN: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
+      APPLE_SERVICE_ID: ${{ vars.APPLE_SERVICE_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_KEY_ID: ${{ vars.APPLE_KEY_ID }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Verify target and protected configuration
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          expected="APPLY olga-apple-identity-provider-$DEPLOY_ENVIRONMENT"
+          if [[ "$CONFIRMATION" != "$expected" ]]; then
+            echo "::error::Confirmation must be exactly: $expected"
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "dev" && "$GITHUB_REF" != "refs/heads/develop" ]]; then
+            echo "::error::Dev Apple configuration must run from develop."
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "prd" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Production Apple configuration must run from main."
+            exit 1
+          fi
+          for name in EXTERNAL_DIRECTORY_CLIENT_ID EXTERNAL_TENANT_ID EXTERNAL_TENANT_SUBDOMAIN \
+            APPLE_SERVICE_ID APPLE_TEAM_ID APPLE_KEY_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required $DEPLOY_ENVIRONMENT GitHub Environment variable $name is not configured."
+              exit 1
+            fi
+          done
+          if [[ "$DEPLOY_ENVIRONMENT" == "dev" && "$EXTERNAL_TENANT_SUBDOMAIN" != *dev ]]; then
+            echo "::error::The dev external tenant subdomain must end in dev."
+            exit 1
+          fi
+          if [[ "$DEPLOY_ENVIRONMENT" == "prd" && "$EXTERNAL_TENANT_SUBDOMAIN" == *dev ]]; then
+            echo "::error::The prd external tenant subdomain must not use the dev suffix."
+            exit 1
+          fi
+
+      - name: Sign in to the external tenant with OIDC
+        uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
+          tenant-id: ${{ vars.EXTERNAL_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Create or rotate the Apple provider
+        id: apple
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        env:
+          OLGA_APPLE_PRIVATE_KEY_P8: ${{ secrets.APPLE_PRIVATE_KEY_P8 }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OLGA_APPLE_PRIVATE_KEY_P8)) {
+            throw 'APPLE_PRIVATE_KEY_P8 is not configured in the selected GitHub Environment.'
+          }
+          $providerId = .\scripts\bootstrap-apple-identity-provider.ps1 `
+            -Environment $env:DEPLOY_ENVIRONMENT `
+            -TenantId $env:EXTERNAL_TENANT_ID `
+            -TenantSubdomain $env:EXTERNAL_TENANT_SUBDOMAIN `
+            -AppleServiceId $env:APPLE_SERVICE_ID `
+            -AppleTeamId $env:APPLE_TEAM_ID `
+            -AppleKeyId $env:APPLE_KEY_ID
+          if ($providerId -cne 'Apple-Managed-OIDC') {
+            throw 'The Apple bootstrap did not return the expected provider object ID.'
+          }
+          "provider_id=$providerId" >> $env:GITHUB_OUTPUT
+
+      - name: Publish result
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          APPLE_PROVIDER_ID: ${{ steps.apple.outputs.provider_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Apple External ID configured"
+            echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
+            echo "- Every existing identity-provider association was retained."
+            echo "- Apple provider \`$APPLE_PROVIDER_ID\` is associated with the existing user flow."
+            echo "- No Terraform resources were created, updated, replaced, or deleted."
+          } >> "$GITHUB_STEP_SUMMARY"

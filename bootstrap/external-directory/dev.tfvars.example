@@ -7,3 +7,6 @@ mobile_redirect_uri   = "<dev-mobile-redirect-uri>"
 
 # Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the dev external tenant.
 google_identity_provider_id = "<dev-google-identity-provider-object-id>"
+
+# Uncomment only after bootstrap-apple-identity-provider.ps1 configures the dev tenant.
+# apple_identity_provider_id = "Apple-Managed-OIDC"
