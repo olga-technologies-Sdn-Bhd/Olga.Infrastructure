@@ -157,6 +157,7 @@ module "platform" {
   postgres_connection_secret_uri           = module.data.postgres_connection_secret_uri
   service_token_secret_uri                 = module.data.service_token_secret_uri
   identity_master_key_secret_uri           = module.data.identity_master_key_secret_uri
+  core_admin_api_key_secret_uri            = module.data.core_admin_api_key_secret_uri
   core_identity_id                         = module.foundation.core_identity_id
   core_identity_principal_id               = module.foundation.core_identity_principal_id
   nlp_identity_id                          = module.foundation.nlp_identity_id

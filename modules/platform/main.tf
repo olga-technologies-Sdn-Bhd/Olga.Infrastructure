@@ -152,6 +152,15 @@ resource "azurerm_container_app" "core_api" {
     identity            = var.core_identity_id
   }
 
+  dynamic "secret" {
+    for_each = var.core_admin_api_key_secret_uri == null ? [] : [1]
+    content {
+      name                = "admin-api-key"
+      key_vault_secret_id = var.core_admin_api_key_secret_uri
+      identity            = var.core_identity_id
+    }
+  }
+
   dynamic "registry" {
     for_each = var.core_application_delivery_enabled ? [1] : []
     content {
@@ -185,6 +194,19 @@ resource "azurerm_container_app" "core_api" {
       env {
         name        = "IdentityProtection__MasterKeyBase64"
         secret_name = "identity-protection-master-key"
+      }
+      dynamic "env" {
+        for_each = var.core_admin_api_key_secret_uri == null ? [] : [1]
+        content {
+          name        = "Admin__ApiKey"
+          secret_name = "admin-api-key"
+        }
+      }
+      # Also set by Olga.Core's deploy workflow; declared here with the same values so a
+      # Terraform apply doesn't strip it from the running app.
+      env {
+        name  = "Diagnostics__IncludeExceptionDetails"
+        value = var.environment == "dev" ? "true" : "false"
       }
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
