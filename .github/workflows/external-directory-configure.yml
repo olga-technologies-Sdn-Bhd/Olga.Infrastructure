@@ -1,4 +1,4 @@
-name: External ID Directory - Configure
+name: External ID - Configure Google Provider
 
 on:
   workflow_dispatch:

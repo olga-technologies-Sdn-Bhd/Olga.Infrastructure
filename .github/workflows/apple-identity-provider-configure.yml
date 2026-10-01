@@ -1,4 +1,4 @@
-name: Apple External ID - Configure
+name: External ID - Configure Apple Provider
 
 on:
   workflow_dispatch:
@@ -107,8 +107,8 @@ jobs:
             -AppleServiceId $env:APPLE_SERVICE_ID `
             -AppleTeamId $env:APPLE_TEAM_ID `
             -AppleKeyId $env:APPLE_KEY_ID
-          if ($providerId -cne 'Apple-Managed-OIDC') {
-            throw 'The Apple bootstrap did not return the expected provider object ID.'
+          if ($providerId -notmatch '^[A-Za-z0-9][A-Za-z0-9-]{1,127}$') {
+            throw 'The Apple bootstrap did not return a valid provider object ID.'
           }
           "provider_id=$providerId" >> $env:GITHUB_OUTPUT
 

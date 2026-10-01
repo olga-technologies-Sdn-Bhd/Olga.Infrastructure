@@ -100,7 +100,7 @@ The workflow exposes `GOOGLE_CLIENT_SECRET` only to the PowerShell bootstrap ste
 
 ### 4. Create the directory applications and user flow with Terraform
 
-Run the protected **External ID Directory - Configure** workflow after the OIDC application and GitHub Environment values exist. It creates:
+Run the protected **External ID - Configure Google Provider** workflow after the OIDC application and GitHub Environment values exist. It creates:
 
 - `olga_api_<environment>` as a single-tenant API registration and service principal;
 - `api://<api-client-id>` and the enabled delegated `access_as_user` scope using access-token version 2;
@@ -113,7 +113,7 @@ The registrations and flow are protected with `prevent_destroy`. Terraform creat
 
 If `google_identity_provider_id` is omitted or `null`, Email OTP remains the sole provider. When it is supplied, Terraform always retains `EmailOtpSignup-OAUTH` and adds Google. The provider ID is resolved through the Microsoft Graph provider authenticated to `external_tenant_id`, so an ID copied from the other environment cannot be associated successfully. Google credential rotation updates the provider in place and does not recreate the user flow, mobile application, or API registration.
 
-If `apple_identity_provider_id` is supplied after the independent Apple bootstrap, Terraform also retains `Apple-Managed-OIDC`. Apple creation and credential rotation are not performed by Terraform; follow [APPLE_EXTERNAL_ID.md](APPLE_EXTERNAL_ID.md).
+If `apple_identity_provider_id` is supplied after the independent Apple bootstrap, Terraform also retains the provider object ID returned by that workflow. Apple creation and credential rotation are not performed by Terraform; follow [APPLE_EXTERNAL_ID.md](APPLE_EXTERNAL_ID.md).
 
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 

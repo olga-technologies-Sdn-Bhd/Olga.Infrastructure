@@ -60,8 +60,8 @@ variable "apple_identity_provider_id" {
   nullable    = true
 
   validation {
-    condition     = var.apple_identity_provider_id == null || var.apple_identity_provider_id == "Apple-Managed-OIDC"
-    error_message = "apple_identity_provider_id must be null or Apple-Managed-OIDC as returned by the Apple identity-provider bootstrap."
+    condition     = var.apple_identity_provider_id == null || can(regex("^[A-Za-z0-9][A-Za-z0-9-]{1,127}$", var.apple_identity_provider_id))
+    error_message = "apple_identity_provider_id must be null or the safe object ID returned by the Apple identity-provider bootstrap."
   }
 }
 

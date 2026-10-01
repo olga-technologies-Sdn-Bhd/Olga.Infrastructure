@@ -225,21 +225,26 @@ try {
     }
 
     $flowProvidersUri = "$graphRoot/identity/authenticationEventsFlows/$flowId/microsoft.graph.externalUsersSelfServiceSignUpEventsFlow/onAuthenticationMethodLoadStart/microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp/identityProviders"
-    $flowProviderIds = @($matchingFlows[0].onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
-    if ($flowProviderIds -notcontains 'EmailOtpSignup-OAUTH') {
+    $originalFlowProviderIds = @($matchingFlows[0].onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
+    if ($originalFlowProviderIds -notcontains 'EmailOtpSignup-OAUTH') {
         throw 'The existing customer user flow does not contain Email OTP; refusing to modify its identity-provider associations.'
     }
 
-    if ($flowProviderIds -notcontains 'Google-OAUTH' -and $flowProviderIds -notcontains $providerId) {
+    if ($originalFlowProviderIds -notcontains $providerId) {
         $referenceBody = @{
-            '@odata.id' = "$graphRoot/identityProviders/Google-OAUTH"
+            '@odata.id' = "$graphRoot/identityProviders/$providerId"
         }
         $null = Invoke-SafeGraphRequest -Method POST -Uri "$flowProvidersUri/`$ref" -Token $accessToken -Body $referenceBody
+    }
 
-        $verifiedFlow = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/identity/authenticationEventsFlows/$flowId" -Token $accessToken
-        $verifiedFlowProviderIds = @($verifiedFlow.onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
-        if ($verifiedFlowProviderIds -notcontains 'Google-OAUTH' -and $verifiedFlowProviderIds -notcontains $providerId) {
-            throw 'Microsoft Graph did not confirm the Google association on the existing customer user flow.'
+    $verifiedFlow = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/identity/authenticationEventsFlows/$flowId" -Token $accessToken
+    $verifiedFlowProviderIds = @($verifiedFlow.onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
+    if ($verifiedFlowProviderIds -notcontains $providerId) {
+        throw 'Microsoft Graph did not confirm the configured Google provider association on the existing customer user flow.'
+    }
+    foreach ($originalFlowProviderId in $originalFlowProviderIds) {
+        if ($verifiedFlowProviderIds -notcontains $originalFlowProviderId) {
+            throw 'An existing identity-provider association was not retained; manual review is required.'
         }
     }
 

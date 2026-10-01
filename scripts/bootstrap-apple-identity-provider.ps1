@@ -37,7 +37,7 @@ $InformationPreference = 'SilentlyContinue'
 $graphV1Root = 'https://graph.microsoft.com/v1.0'
 $graphBetaRoot = 'https://graph.microsoft.com/beta'
 $secretEnvironmentVariable = 'OLGA_APPLE_PRIVATE_KEY_P8'
-$appleProviderId = 'Apple-Managed-OIDC'
+$providerIdPattern = '^[A-Za-z0-9][A-Za-z0-9-]{1,127}$'
 $accessToken = $null
 $privateKey = $null
 
@@ -49,6 +49,45 @@ function Get-SafeHttpStatus {
     }
 
     return $null
+}
+
+function Get-SafeGraphError {
+    param([Parameter(Mandatory)]$ErrorRecord)
+
+    $rawError = [string]$ErrorRecord.ErrorDetails.Message
+    if ([string]::IsNullOrWhiteSpace($rawError)) {
+        return $null
+    }
+
+    try {
+        $errorDocument = $rawError | ConvertFrom-Json
+        $errorCode = [string]$errorDocument.error.code
+        $errorMessage = [string]$errorDocument.error.message
+        if ([string]::IsNullOrWhiteSpace($errorCode) -and [string]::IsNullOrWhiteSpace($errorMessage)) {
+            return $null
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($privateKey)) {
+            $errorMessage = $errorMessage.Replace($privateKey, '[redacted-private-key]')
+        }
+        if (-not [string]::IsNullOrWhiteSpace($privateKeyBody)) {
+            $errorMessage = $errorMessage.Replace($privateKeyBody, '[redacted-private-key]')
+        }
+        $errorMessage = [regex]::Replace(
+            $errorMessage,
+            '(?s)-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----',
+            '[redacted-private-key]'
+        )
+        $errorMessage = ($errorMessage -replace '[\r\n]+', ' ').Trim()
+        if ($errorMessage.Length -gt 500) {
+            $errorMessage = $errorMessage.Substring(0, 500)
+        }
+
+        return "Graph code '$errorCode': $errorMessage"
+    }
+    catch {
+        return $null
+    }
 }
 
 function Invoke-SafeGraphRequest {
@@ -75,9 +114,13 @@ function Invoke-SafeGraphRequest {
     }
     catch {
         $status = Get-SafeHttpStatus -Exception $_.Exception
+        $safeGraphError = Get-SafeGraphError -ErrorRecord $_
         if ($null -ne $status) {
             $safePath = ([Uri]$Uri).AbsolutePath
-            throw "Microsoft Graph $Method $safePath failed with HTTP status $status. Response details were suppressed to protect credentials and tokens."
+            if (-not [string]::IsNullOrWhiteSpace($safeGraphError)) {
+                throw "Microsoft Graph $Method $safePath failed with HTTP status $status. $safeGraphError"
+            }
+            throw "Microsoft Graph $Method $safePath failed with HTTP status $status. Response details were unavailable or suppressed to protect credentials and tokens."
         }
         throw 'Microsoft Graph request failed. Error details were suppressed to protect credentials and tokens.'
     }
@@ -158,10 +201,41 @@ try {
     if ([string]::IsNullOrWhiteSpace($privateKey)) {
         throw "The Apple private key is required through $secretEnvironmentVariable."
     }
-    $privateKey = $privateKey.Trim()
-    if (-not $privateKey.StartsWith('-----BEGIN PRIVATE KEY-----', [StringComparison]::Ordinal) -or
-        -not $privateKey.EndsWith('-----END PRIVATE KEY-----', [StringComparison]::Ordinal)) {
+    $privateKeyLines = @(
+        $privateKey.Replace("`r`n", "`n").Replace("`r", "`n").Split("`n") |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_.Length -gt 0 }
+    )
+    if ($privateKeyLines.Count -lt 3 -or
+        $privateKeyLines[0] -cne '-----BEGIN PRIVATE KEY-----' -or
+        $privateKeyLines[-1] -cne '-----END PRIVATE KEY-----') {
         throw "The value in $secretEnvironmentVariable is not a complete Apple .p8 private key."
+    }
+    $privateKeyBody = ($privateKeyLines[1..($privateKeyLines.Count - 2)] -join '')
+    try {
+        $privateKeyBytes = [Convert]::FromBase64String($privateKeyBody)
+    }
+    catch {
+        throw "The value in $secretEnvironmentVariable does not contain valid base64 Apple .p8 key data."
+    }
+    if ($privateKeyBytes.Length -lt 64) {
+        throw "The value in $secretEnvironmentVariable does not contain a valid-length Apple .p8 private key."
+    }
+    $privateKeyBodyLines = @()
+    for ($offset = 0; $offset -lt $privateKeyBody.Length; $offset += 64) {
+        $length = [Math]::Min(64, $privateKeyBody.Length - $offset)
+        $privateKeyBodyLines += $privateKeyBody.Substring($offset, $length)
+    }
+    $privateKey = "-----BEGIN PRIVATE KEY-----`n$($privateKeyBodyLines -join "`n")`n-----END PRIVATE KEY-----"
+    $keyValidator = [Security.Cryptography.ECDsa]::Create()
+    try {
+        $keyValidator.ImportFromPem($privateKey)
+    }
+    catch {
+        throw "The value in $secretEnvironmentVariable is not a valid PKCS#8 elliptic-curve Apple private key."
+    }
+    finally {
+        $keyValidator.Dispose()
     }
 
     $providers = @()
@@ -188,23 +262,33 @@ try {
         developerId     = $AppleTeamId
         serviceId       = $AppleServiceId
         keyId           = $AppleKeyId
-        certificateData = $privateKey
+        certificateData = $privateKeyBody
     }
 
     if ($appleProviders.Count -eq 0) {
         $provider = Invoke-SafeGraphRequest -Method POST -Uri "$graphBetaRoot/identity/identityProviders" -Token $accessToken -Body $providerBody
         $providerId = [string]$provider.id
+        if ($providerId -notmatch $providerIdPattern) {
+            $providerPage = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/identityProviders" -Token $accessToken
+            $createdAppleProviders = @($providerPage.value | Where-Object {
+                ([string]$_.'@odata.type').TrimStart('#') -eq 'microsoft.graph.appleManagedIdentityProvider' -and
+                [string]$_.developerId -ceq $AppleTeamId -and
+                [string]$_.serviceId -ceq $AppleServiceId -and
+                [string]$_.keyId -ceq $AppleKeyId
+            })
+            if ($createdAppleProviders.Count -ne 1) {
+                throw 'Microsoft Graph created Apple but did not return or expose exactly one matching provider object.'
+            }
+            $providerId = [string]$createdAppleProviders[0].id
+        }
     }
     else {
         $providerId = [string]$appleProviders[0].id
-        if ($providerId -cne $appleProviderId) {
-            throw 'The existing Apple identity provider has an unexpected object ID.'
-        }
         $null = Invoke-SafeGraphRequest -Method PATCH -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken -Body $providerBody
     }
 
-    if ($providerId -cne $appleProviderId) {
-        throw 'Microsoft Graph did not return the expected Apple identity-provider object ID.'
+    if ($providerId -notmatch $providerIdPattern) {
+        throw 'Microsoft Graph returned an invalid Apple identity-provider object ID.'
     }
 
     $verifiedProvider = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken
@@ -262,7 +346,14 @@ finally {
     $privateKey = $null
     $accessToken = $null
     $providerBody = $null
+    $providerPage = $null
+    $createdAppleProviders = $null
     $referenceBody = $null
+    $privateKeyBody = $null
+    $privateKeyBodyLines = $null
+    $privateKeyBytes = $null
+    $privateKeyLines = $null
+    $keyValidator = $null
     $tokenJson = $null
     $tokenResult = $null
     Remove-Item "Env:$secretEnvironmentVariable" -ErrorAction SilentlyContinue

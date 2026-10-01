@@ -47,6 +47,8 @@ Configure these independently in protected GitHub Environments `dev` and `prd`:
 
 The existing `EXTERNAL_DIRECTORY_CLIENT_ID`, `EXTERNAL_TENANT_ID`, and `EXTERNAL_TENANT_SUBDOMAIN` variables are reused. The OIDC application requires the existing Microsoft Graph application permissions `IdentityProvider.ReadWrite.All`, `Organization.Read.All`, and `EventListener.ReadWrite.All`, with tenant-wide admin consent.
 
+Enter `APPLE_PRIVATE_KEY_P8` as the actual multiline file contents, including the exact `BEGIN PRIVATE KEY` and `END PRIVATE KEY` lines. Do not store a file path, base64-encode the whole PEM file, or replace line breaks with the two literal characters `\n`. The bootstrap validates the PKCS#8 elliptic-curve PEM, extracts its base64 payload for Graph's `certificateData` property, and never emits either representation. Graph failures expose only the service's error code and a bounded, private-key-redacted message.
+
 ## Configure dev
 
 Run only from `develop`:
@@ -58,7 +60,7 @@ gh workflow run apple-identity-provider-configure.yml `
   -f 'confirmation=APPLY olga-apple-identity-provider-dev'
 ```
 
-The workflow creates or rotates Apple, associates `Apple-Managed-OIDC` with `olga_signup_signin_dev`, verifies every pre-existing provider remains, and publishes only the non-secret provider ID.
+The workflow creates or rotates Apple, associates the provider object ID returned by Graph with `olga_signup_signin_dev`, verifies every pre-existing provider remains, and publishes only that non-secret ID.
 
 Test on a physical iPhone using both **Share My Email** and **Hide My Email**. Confirm the hosted user flow returns through the existing dev callback, obtains Entra tokens through PKCE, restores and refreshes the session, signs out correctly, and does not expose the private key, authorization code, or tokens. Re-test every pre-existing sign-in method independently.
 
@@ -77,7 +79,7 @@ Never copy the dev Service ID, key, private key, Entra domain, or return URL int
 
 ## Terraform source of truth
 
-`bootstrap/external-directory` accepts the optional non-secret `apple_identity_provider_id`. After Apple is configured, use the stable value `Apple-Managed-OIDC` for the matching environment on any later directory-root Terraform plan so that a future user-flow update retains Apple. The private key must never be passed to Terraform.
+`bootstrap/external-directory` accepts the optional non-secret `apple_identity_provider_id`. After Apple is configured, use the exact provider object ID printed by the matching workflow on any later directory-root Terraform plan so that a future user-flow update retains Apple. The private key must never be passed to Terraform.
 
 Microsoft references:
 
