@@ -60,7 +60,7 @@ gh workflow run apple-identity-provider-configure.yml `
   -f 'confirmation=APPLY olga-apple-identity-provider-dev'
 ```
 
-The workflow creates or rotates Apple, associates `Apple-Managed-OIDC` with `olga_signup_signin_dev`, verifies every pre-existing provider remains, and publishes only the non-secret provider ID.
+The workflow creates or rotates Apple, associates the provider object ID returned by Graph with `olga_signup_signin_dev`, verifies every pre-existing provider remains, and publishes only that non-secret ID.
 
 Test on a physical iPhone using both **Share My Email** and **Hide My Email**. Confirm the hosted user flow returns through the existing dev callback, obtains Entra tokens through PKCE, restores and refreshes the session, signs out correctly, and does not expose the private key, authorization code, or tokens. Re-test every pre-existing sign-in method independently.
 
@@ -79,7 +79,7 @@ Never copy the dev Service ID, key, private key, Entra domain, or return URL int
 
 ## Terraform source of truth
 
-`bootstrap/external-directory` accepts the optional non-secret `apple_identity_provider_id`. After Apple is configured, use the stable value `Apple-Managed-OIDC` for the matching environment on any later directory-root Terraform plan so that a future user-flow update retains Apple. The private key must never be passed to Terraform.
+`bootstrap/external-directory` accepts the optional non-secret `apple_identity_provider_id`. After Apple is configured, use the exact provider object ID printed by the matching workflow on any later directory-root Terraform plan so that a future user-flow update retains Apple. The private key must never be passed to Terraform.
 
 Microsoft references:
 

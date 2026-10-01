@@ -37,7 +37,7 @@ $InformationPreference = 'SilentlyContinue'
 $graphV1Root = 'https://graph.microsoft.com/v1.0'
 $graphBetaRoot = 'https://graph.microsoft.com/beta'
 $secretEnvironmentVariable = 'OLGA_APPLE_PRIVATE_KEY_P8'
-$appleProviderId = 'Apple-Managed-OIDC'
+$providerIdPattern = '^[A-Za-z0-9][A-Za-z0-9-]{1,127}$'
 $accessToken = $null
 $privateKey = $null
 
@@ -268,17 +268,27 @@ try {
     if ($appleProviders.Count -eq 0) {
         $provider = Invoke-SafeGraphRequest -Method POST -Uri "$graphBetaRoot/identity/identityProviders" -Token $accessToken -Body $providerBody
         $providerId = [string]$provider.id
+        if ($providerId -notmatch $providerIdPattern) {
+            $providerPage = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/identityProviders" -Token $accessToken
+            $createdAppleProviders = @($providerPage.value | Where-Object {
+                ([string]$_.'@odata.type').TrimStart('#') -eq 'microsoft.graph.appleManagedIdentityProvider' -and
+                [string]$_.developerId -ceq $AppleTeamId -and
+                [string]$_.serviceId -ceq $AppleServiceId -and
+                [string]$_.keyId -ceq $AppleKeyId
+            })
+            if ($createdAppleProviders.Count -ne 1) {
+                throw 'Microsoft Graph created Apple but did not return or expose exactly one matching provider object.'
+            }
+            $providerId = [string]$createdAppleProviders[0].id
+        }
     }
     else {
         $providerId = [string]$appleProviders[0].id
-        if ($providerId -cne $appleProviderId) {
-            throw 'The existing Apple identity provider has an unexpected object ID.'
-        }
         $null = Invoke-SafeGraphRequest -Method PATCH -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken -Body $providerBody
     }
 
-    if ($providerId -cne $appleProviderId) {
-        throw 'Microsoft Graph did not return the expected Apple identity-provider object ID.'
+    if ($providerId -notmatch $providerIdPattern) {
+        throw 'Microsoft Graph returned an invalid Apple identity-provider object ID.'
     }
 
     $verifiedProvider = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken
@@ -336,6 +346,8 @@ finally {
     $privateKey = $null
     $accessToken = $null
     $providerBody = $null
+    $providerPage = $null
+    $createdAppleProviders = $null
     $referenceBody = $null
     $privateKeyBody = $null
     $privateKeyBodyLines = $null
