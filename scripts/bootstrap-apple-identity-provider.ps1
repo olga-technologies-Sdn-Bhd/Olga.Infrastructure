@@ -70,6 +70,9 @@ function Get-SafeGraphError {
         if (-not [string]::IsNullOrWhiteSpace($privateKey)) {
             $errorMessage = $errorMessage.Replace($privateKey, '[redacted-private-key]')
         }
+        if (-not [string]::IsNullOrWhiteSpace($privateKeyBody)) {
+            $errorMessage = $errorMessage.Replace($privateKeyBody, '[redacted-private-key]')
+        }
         $errorMessage = [regex]::Replace(
             $errorMessage,
             '(?s)-----BEGIN PRIVATE KEY-----.*?-----END PRIVATE KEY-----',
@@ -259,7 +262,7 @@ try {
         developerId     = $AppleTeamId
         serviceId       = $AppleServiceId
         keyId           = $AppleKeyId
-        certificateData = $privateKey
+        certificateData = $privateKeyBody
     }
 
     if ($appleProviders.Count -eq 0) {

@@ -47,7 +47,7 @@ Configure these independently in protected GitHub Environments `dev` and `prd`:
 
 The existing `EXTERNAL_DIRECTORY_CLIENT_ID`, `EXTERNAL_TENANT_ID`, and `EXTERNAL_TENANT_SUBDOMAIN` variables are reused. The OIDC application requires the existing Microsoft Graph application permissions `IdentityProvider.ReadWrite.All`, `Organization.Read.All`, and `EventListener.ReadWrite.All`, with tenant-wide admin consent.
 
-Enter `APPLE_PRIVATE_KEY_P8` as the actual multiline file contents, including the exact `BEGIN PRIVATE KEY` and `END PRIVATE KEY` lines. Do not store a file path, base64-encode the whole PEM file, or replace line breaks with the two literal characters `\n`. The bootstrap validates and canonicalizes the PEM before contacting Microsoft Graph. Graph failures expose only the service's error code and a bounded, private-key-redacted message.
+Enter `APPLE_PRIVATE_KEY_P8` as the actual multiline file contents, including the exact `BEGIN PRIVATE KEY` and `END PRIVATE KEY` lines. Do not store a file path, base64-encode the whole PEM file, or replace line breaks with the two literal characters `\n`. The bootstrap validates the PKCS#8 elliptic-curve PEM, extracts its base64 payload for Graph's `certificateData` property, and never emits either representation. Graph failures expose only the service's error code and a bounded, private-key-redacted message.
 
 ## Configure dev
 
