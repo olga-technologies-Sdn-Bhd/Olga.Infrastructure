@@ -1,4 +1,4 @@
-name: External ID Directory - Configure
+name: Apple External ID - Configure
 
 on:
   workflow_dispatch:
@@ -10,7 +10,7 @@ on:
         type: choice
         options: [dev, prd]
       confirmation:
-        description: Enter APPLY olga-external-directory-<environment>
+        description: Enter APPLY olga-apple-identity-provider-<environment>
         required: true
         type: string
 
@@ -22,9 +22,9 @@ env:
 
 jobs:
   configure:
-    name: Configure ${{ inputs.environment }} external directory
+    name: Configure ${{ inputs.environment }} Apple identity provider
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     environment: ${{ inputs.environment }}
     concurrency:
       group: external-directory-${{ inputs.environment }}
@@ -36,9 +36,9 @@ jobs:
       EXTERNAL_DIRECTORY_CLIENT_ID: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
       EXTERNAL_TENANT_ID: ${{ vars.EXTERNAL_TENANT_ID }}
       EXTERNAL_TENANT_SUBDOMAIN: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
-      EXTERNAL_TENANT_DATA_LOCATION: ${{ vars.EXTERNAL_TENANT_DATA_LOCATION }}
-      MOBILE_REDIRECT_URI: ${{ vars.MOBILE_REDIRECT_URI }}
-      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      APPLE_SERVICE_ID: ${{ vars.APPLE_SERVICE_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_KEY_ID: ${{ vars.APPLE_KEY_ID }}
 
     steps:
       - name: Check out source
@@ -53,21 +53,21 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         run: |
           set -euo pipefail
-          expected="APPLY olga-external-directory-$DEPLOY_ENVIRONMENT"
+          expected="APPLY olga-apple-identity-provider-$DEPLOY_ENVIRONMENT"
           if [[ "$CONFIRMATION" != "$expected" ]]; then
             echo "::error::Confirmation must be exactly: $expected"
             exit 1
           fi
           if [[ "$DEPLOY_ENVIRONMENT" == "dev" && "$GITHUB_REF" != "refs/heads/develop" ]]; then
-            echo "::error::Dev directory configuration must run from develop."
+            echo "::error::Dev Apple configuration must run from develop."
             exit 1
           fi
           if [[ "$DEPLOY_ENVIRONMENT" == "prd" && "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "::error::Production directory configuration must run from main."
+            echo "::error::Production Apple configuration must run from main."
             exit 1
           fi
           for name in EXTERNAL_DIRECTORY_CLIENT_ID EXTERNAL_TENANT_ID EXTERNAL_TENANT_SUBDOMAIN \
-            EXTERNAL_TENANT_DATA_LOCATION MOBILE_REDIRECT_URI GOOGLE_CLIENT_ID; do
+            APPLE_SERVICE_ID APPLE_TEAM_ID APPLE_KEY_ID; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required $DEPLOY_ENVIRONMENT GitHub Environment variable $name is not configured."
               exit 1
@@ -89,24 +89,26 @@ jobs:
           tenant-id: ${{ vars.EXTERNAL_TENANT_ID }}
           allow-no-subscriptions: true
 
-      - name: Create or rotate the Google provider
-        id: google
+      - name: Create or rotate the Apple provider
+        id: apple
         shell: pwsh
         working-directory: ${{ github.workspace }}
         env:
-          OLGA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OLGA_APPLE_PRIVATE_KEY_P8: ${{ secrets.APPLE_PRIVATE_KEY_P8 }}
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:OLGA_GOOGLE_CLIENT_SECRET)) {
-            throw 'GOOGLE_CLIENT_SECRET is not configured in the selected GitHub Environment.'
+          if ([string]::IsNullOrWhiteSpace($env:OLGA_APPLE_PRIVATE_KEY_P8)) {
+            throw 'APPLE_PRIVATE_KEY_P8 is not configured in the selected GitHub Environment.'
           }
-          $providerId = .\scripts\bootstrap-google-identity-provider.ps1 `
+          $providerId = .\scripts\bootstrap-apple-identity-provider.ps1 `
             -Environment $env:DEPLOY_ENVIRONMENT `
             -TenantId $env:EXTERNAL_TENANT_ID `
             -TenantSubdomain $env:EXTERNAL_TENANT_SUBDOMAIN `
-            -GoogleClientId $env:GOOGLE_CLIENT_ID
-          if ($providerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
-            throw 'The Google bootstrap did not return one valid provider object ID.'
+            -AppleServiceId $env:APPLE_SERVICE_ID `
+            -AppleTeamId $env:APPLE_TEAM_ID `
+            -AppleKeyId $env:APPLE_KEY_ID
+          if ($providerId -cne 'Apple-Managed-OIDC') {
+            throw 'The Apple bootstrap did not return the expected provider object ID.'
           }
           "provider_id=$providerId" >> $env:GITHUB_OUTPUT
 
@@ -114,13 +116,13 @@ jobs:
         shell: bash
         env:
           DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          GOOGLE_PROVIDER_ID: ${{ steps.google.outputs.provider_id }}
+          APPLE_PROVIDER_ID: ${{ steps.apple.outputs.provider_id }}
         run: |
           set -euo pipefail
           {
-            echo "### Google External ID configured"
+            echo "### Apple External ID configured"
             echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
-            echo "- Existing Email OTP association was verified and retained."
-            echo "- Google provider \`$GOOGLE_PROVIDER_ID\` is associated with the existing user flow."
+            echo "- Every existing identity-provider association was retained."
+            echo "- Apple provider \`$APPLE_PROVIDER_ID\` is associated with the existing user flow."
             echo "- No Terraform resources were created, updated, replaced, or deleted."
           } >> "$GITHUB_STEP_SUMMARY"

@@ -2,7 +2,7 @@
 
 Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md); the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), the independent Apple federation workflow is documented in [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md), and the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -31,7 +31,9 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
-External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID Directory - Configure** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and apply `bootstrap/external-directory`. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. The directory root creates the API and public-mobile registrations, service principals, redirect URI, delegated scope, preauthorization, tenant-wide permission grant, and the Email OTP plus Google customer user flow. Production uses an independent tenant, OIDC identity, Google credential, provider ID, and state, and remains manual-only.
+External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID Directory - Configure** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and associate it with the existing customer user flow through Microsoft Graph. It verifies that Email OTP remains associated and does not run Terraform or modify the existing applications, service principals, owners, attributes, or native-authentication settings. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. Production uses an independent tenant, OIDC identity, Google credential, and GitHub Environment configuration.
+
+The separate protected **Apple External ID - Configure** workflow creates or rotates only Apple and adds it to that environment's existing customer user flow. It records and verifies preservation of every current provider association, consumes the `.p8` key only from the matching GitHub Environment secret, and does not rerun or depend on Google. Dev and prd use independent Apple Service IDs and signing credentials; see [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md).
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `
@@ -94,6 +96,42 @@ Changing the already-created dev server from delegated-subnet networking to this
 
 ## Mobile identity boundary
 
-Microsoft Entra External ID owns Email OTP, Google federation, and mobile token issuance. Terraform only validates and emits the resulting non-secret tenant and application identifiers and may associate a non-secret Google provider object ID. It does not store the Google client secret, OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+Microsoft Entra External ID owns Email OTP, Google and Apple federation, and mobile token issuance. Independent provider workflows associate Google and Apple with the existing user flow through Microsoft Graph. Terraform does not store the Google client secret, Apple private key, OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+
+### React Native / Expo authentication handoff
+
+The mobile application continues to use the existing Microsoft Entra browser-delegated Authorization Code flow with PKCE. Google and Apple are presented by the same Entra-hosted page as Email OTP, so the mobile application must not add direct social-provider SDKs or provider credentials. All methods return through the same Entra callback and token exchange.
+
+Install the Expo-compatible packages in the mobile repository:
+
+```bash
+npx expo install expo-auth-session expo-crypto expo-web-browser expo-secure-store
+```
+
+Add these non-secret development settings:
+
+```dotenv
+EXPO_PUBLIC_ENVIRONMENT=dev
+EXPO_PUBLIC_ENTRA_CLIENT_ID=e8db01a0-3a93-48e0-86fa-68123e026088
+EXPO_PUBLIC_ENTRA_TENANT_ID=d6b05a66-a3b7-442c-b56f-d4d7a9e154ba
+EXPO_PUBLIC_ENTRA_AUTHORITY=https://olgaconnectdev.ciamlogin.com/
+EXPO_PUBLIC_ENTRA_REDIRECT_URI=olga-dev://auth
+EXPO_PUBLIC_OLGA_API_SCOPE=api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user
+```
+
+Register the callback scheme without replacing the mobile project's existing bundle and package identifiers:
+
+```json
+{
+  "expo": {
+    "scheme": "olga-dev",
+    "plugins": ["expo-secure-store"]
+  }
+}
+```
+
+Configure `expo-auth-session` with issuer `https://olgaconnectdev.ciamlogin.com/d6b05a66-a3b7-442c-b56f-d4d7a9e154ba/v2.0`, redirect URI `olga-dev://auth`, PKCE, and scopes `openid`, `profile`, `email`, `offline_access`, and `api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user`. Open the system browser, exchange the returned authorization code with the PKCE verifier and no client secret, then store tokens only in `expo-secure-store`. Use an Expo development or standalone build for callback testing; Expo Go does not claim the registered `olga-dev` scheme.
+
+The existing sign-up/sign-in button may remain unchanged: the Entra-hosted page displays Email OTP and every associated federated provider. Never add `GOOGLE_CLIENT_SECRET`, the Apple `.p8` key, or any other private credential to the mobile source, Expo environment, build configuration, logs, analytics, AsyncStorage, Redux persistence, or SQLite. The complete hook, refresh, sign-out, error-handling, and test examples are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
 
 Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

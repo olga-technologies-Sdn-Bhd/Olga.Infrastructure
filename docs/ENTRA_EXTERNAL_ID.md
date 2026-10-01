@@ -2,7 +2,7 @@
 
 This runbook configures Microsoft Entra External ID as the identity provider for the OLGA React Native/Expo mobile application. The supported external environments are exactly `dev` and `prd`; the established internal Terraform production value remains `prod`. Use a separate external tenant for each environment. Never copy customer identities, tokens, personal data, redirect URIs, or deployment credentials between them.
 
-The customer user flow supports Email OTP and, when its independently bootstrapped provider object ID is supplied, Google. Microsoft Entra owns OTP generation, delivery, validation, expiration, retry behavior, customer identity lifecycle, access tokens, refresh tokens, and sessions. OLGA must not generate, send, log, persist, or validate OTP values.
+The customer user flow supports Email OTP and independently bootstrapped federated providers. This runbook establishes Email OTP and Google; Apple is added later through the separate non-dependent workflow in [APPLE_EXTERNAL_ID.md](APPLE_EXTERNAL_ID.md). Microsoft Entra owns OTP generation, delivery, validation, expiration, retry behavior, customer identity lifecycle, access tokens, refresh tokens, and sessions. OLGA must not generate, send, log, persist, or validate OTP values.
 
 Core API, NLP API, Swagger, health endpoints, and existing development identity shortcuts remain unauthenticated for this MVP. A mobile access token may be sent in the `Authorization` header, but Core currently ignores it. The token does not protect either API until the deferred work in [SECURITY_DEBT.md](SECURITY_DEBT.md) is completed.
 
@@ -12,10 +12,13 @@ The isolated `bootstrap/external-tenant` Terraform root creates the External ID 
 
 After the tenant exists, `scripts/bootstrap-google-identity-provider.ps1` creates or updates the Google social identity provider directly through Microsoft Graph. It reads the Google client secret only at runtime and emits only the provider object ID. `bootstrap/external-directory` then manages the API and public-mobile registrations, service principals, native redirect URI, delegated API scope, preauthorization, tenant-wide delegated permission grant, and the customer user flow associated with the mobile application. Terraform receives only the non-secret Google provider object ID; the Google client secret never enters configuration, plans, outputs, or state. No application secret or certificate is created.
 
+After that base flow exists, `.github/workflows/apple-identity-provider-configure.yml` can create or rotate Apple independently and associate it with the same flow. It preserves every existing association and consumes the Apple `.p8` key only at runtime. The optional Terraform `apple_identity_provider_id` retains Apple on later directory-root plans without placing the private key in Terraform.
+
 Microsoft references:
 
 - [Create an external-tenant sign-up and sign-in user flow](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-user-flow-sign-up-sign-in-customers)
 - [Add Google as an identity provider](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-google-federation-customers)
+- [Add Apple as an identity provider](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-apple-federation-customers)
 - [Microsoft Graph identity provider API](https://learn.microsoft.com/en-us/graph/api/resources/identityproviderbase)
 - [Create a CIAM directory with Terraform AzAPI](https://learn.microsoft.com/en-us/azure/templates/microsoft.azureactivedirectory/ciamdirectories)
 - [Associate an application with a user flow](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-user-flow-add-application)
@@ -104,11 +107,13 @@ Run the protected **External ID Directory - Configure** workflow after the OIDC 
 - `olga_mobile_<environment>` as a single-tenant public-client registration and service principal, with public-client flows and the native authentication APIs enabled;
 - the exact environment-specific native redirect URI;
 - the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
-- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, optional Google association from `google_identity_provider_id`, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
+- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, optional Google and Apple associations from their non-secret provider IDs, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
 
 The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Terraform explicitly sets `isFallbackPublicClient` to `true` and then, in a separate Microsoft Graph update, sets `nativeAuthenticationApisEnabled` to `all`; both settings are required for native authentication. Native authentication lets the mobile app accept one email address, request the `registration_required` capability, and continue an unknown address into sign-up without showing Microsoft's **No account? Create one** branch. The account must still be created only after Entra verifies the emailed OTP. Do not enable email-and-password or configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages code generation, email delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 
 If `google_identity_provider_id` is omitted or `null`, Email OTP remains the sole provider. When it is supplied, Terraform always retains `EmailOtpSignup-OAUTH` and adds Google. The provider ID is resolved through the Microsoft Graph provider authenticated to `external_tenant_id`, so an ID copied from the other environment cannot be associated successfully. Google credential rotation updates the provider in place and does not recreate the user flow, mobile application, or API registration.
+
+If `apple_identity_provider_id` is supplied after the independent Apple bootstrap, Terraform also retains `Apple-Managed-OIDC`. Apple creation and credential rotation are not performed by Terraform; follow [APPLE_EXTERNAL_ID.md](APPLE_EXTERNAL_ID.md).
 
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 

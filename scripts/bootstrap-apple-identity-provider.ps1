@@ -18,19 +18,28 @@ param(
     [string]$TenantSubdomain,
 
     [Parameter(Mandatory)]
-    [ValidatePattern('^[A-Za-z0-9._-]+\.apps\.googleusercontent\.com$')]
-    [string]$GoogleClientId
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9.-]{1,253}[A-Za-z0-9]$')]
+    [string]$AppleServiceId,
+
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[A-Z0-9]{10}$')]
+    [string]$AppleTeamId,
+
+    [Parameter(Mandatory)]
+    [ValidatePattern('^[A-Z0-9]{10}$')]
+    [string]$AppleKeyId
 )
 
 $ErrorActionPreference = 'Stop'
 $VerbosePreference = 'SilentlyContinue'
 $DebugPreference = 'SilentlyContinue'
 $InformationPreference = 'SilentlyContinue'
-$graphRoot = 'https://graph.microsoft.com/v1.0'
-$secretEnvironmentVariable = 'OLGA_GOOGLE_CLIENT_SECRET'
+$graphV1Root = 'https://graph.microsoft.com/v1.0'
+$graphBetaRoot = 'https://graph.microsoft.com/beta'
+$secretEnvironmentVariable = 'OLGA_APPLE_PRIVATE_KEY_P8'
+$appleProviderId = 'Apple-Managed-OIDC'
 $accessToken = $null
-$clientSecret = $null
-$secretPointer = [IntPtr]::Zero
+$privateKey = $null
 
 function Get-SafeHttpStatus {
     param([Parameter(Mandatory)]$Exception)
@@ -134,7 +143,7 @@ try {
         throw 'The Microsoft Graph token must contain IdentityProvider.ReadWrite.All, Organization.Read.All, and EventListener.ReadWrite.All as delegated scopes or application roles.'
     }
 
-    $organization = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/organization?`$select=id,verifiedDomains" -Token $accessToken
+    $organization = Invoke-SafeGraphRequest -Method GET -Uri "$graphV1Root/organization?`$select=id,verifiedDomains" -Token $accessToken
     if (@($organization.value).Count -ne 1 -or [string]$organization.value[0].id -ne $TenantId) {
         throw 'Microsoft Graph did not return the expected external tenant organization.'
     }
@@ -142,24 +151,23 @@ try {
     $expectedDomain = "$TenantSubdomain.onmicrosoft.com"
     $verifiedDomains = @($organization.value[0].verifiedDomains | ForEach-Object { [string]$_.name })
     if ($verifiedDomains -notcontains $expectedDomain) {
-        throw "TenantSubdomain does not match a verified domain in the authenticated external tenant."
+        throw 'TenantSubdomain does not match a verified domain in the authenticated external tenant.'
     }
 
-    $clientSecret = [Environment]::GetEnvironmentVariable($secretEnvironmentVariable, 'Process')
-    if ([string]::IsNullOrWhiteSpace($clientSecret)) {
-        $secureSecret = Read-Host "Enter the Google OAuth client secret (or set $secretEnvironmentVariable in this process)" -AsSecureString
-        $secretPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureSecret)
-        $clientSecret = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($secretPointer)
-        $secureSecret.Dispose()
+    $privateKey = [Environment]::GetEnvironmentVariable($secretEnvironmentVariable, 'Process')
+    if ([string]::IsNullOrWhiteSpace($privateKey)) {
+        throw "The Apple private key is required through $secretEnvironmentVariable."
     }
-    if ([string]::IsNullOrWhiteSpace($clientSecret)) {
-        throw "The Google OAuth client secret is required through $secretEnvironmentVariable or secure interactive input."
+    $privateKey = $privateKey.Trim()
+    if (-not $privateKey.StartsWith('-----BEGIN PRIVATE KEY-----', [StringComparison]::Ordinal) -or
+        -not $privateKey.EndsWith('-----END PRIVATE KEY-----', [StringComparison]::Ordinal)) {
+        throw "The value in $secretEnvironmentVariable is not a complete Apple .p8 private key."
     }
 
     $providers = @()
-    $nextLink = "$graphRoot/identity/identityProviders"
+    $nextLink = "$graphBetaRoot/identity/identityProviders"
     while ($null -ne $nextLink) {
-        if (-not $nextLink.StartsWith("$graphRoot/identity/identityProviders", [StringComparison]::Ordinal)) {
+        if (-not $nextLink.StartsWith("$graphBetaRoot/identity/identityProviders", [StringComparison]::Ordinal)) {
             throw 'Microsoft Graph returned an unexpected identity-provider pagination URL.'
         }
         $page = Invoke-SafeGraphRequest -Method GET -Uri $nextLink -Token $accessToken
@@ -167,46 +175,50 @@ try {
         $nextLink = $page.'@odata.nextLink'
     }
 
-    $googleProviders = @($providers | Where-Object { [string]$_.identityProviderType -eq 'Google' })
-    if ($googleProviders.Count -gt 1) {
-        throw 'Multiple Google identity providers exist in the target external tenant. Resolve the conflict in Entra before rerunning this script.'
+    $appleProviders = @($providers | Where-Object {
+        ([string]$_.'@odata.type').TrimStart('#') -eq 'microsoft.graph.appleManagedIdentityProvider'
+    })
+    if ($appleProviders.Count -gt 1) {
+        throw 'Multiple Apple identity providers exist in the target external tenant. Resolve the conflict in Entra before rerunning this script.'
     }
 
-    $createBody = @{
-        '@odata.type'        = '#microsoft.graph.socialIdentityProvider'
-        displayName          = 'Google'
-        identityProviderType = 'Google'
-        clientId             = $GoogleClientId
-        clientSecret         = $clientSecret
-    }
-    $updateBody = @{
-        '@odata.type' = '#microsoft.graph.socialIdentityProvider'
-        displayName   = 'Google'
-        clientId      = $GoogleClientId
-        clientSecret  = $clientSecret
+    $providerBody = @{
+        '@odata.type'   = '#microsoft.graph.appleManagedIdentityProvider'
+        displayName     = 'Apple'
+        developerId     = $AppleTeamId
+        serviceId       = $AppleServiceId
+        keyId           = $AppleKeyId
+        certificateData = $privateKey
     }
 
-    if ($googleProviders.Count -eq 0) {
-        $provider = Invoke-SafeGraphRequest -Method POST -Uri "$graphRoot/identity/identityProviders" -Token $accessToken -Body $createBody
+    if ($appleProviders.Count -eq 0) {
+        $provider = Invoke-SafeGraphRequest -Method POST -Uri "$graphBetaRoot/identity/identityProviders" -Token $accessToken -Body $providerBody
         $providerId = [string]$provider.id
     }
     else {
-        $providerId = [string]$googleProviders[0].id
-        if ($providerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
-            throw 'The existing Google identity provider has an invalid object ID.'
+        $providerId = [string]$appleProviders[0].id
+        if ($providerId -cne $appleProviderId) {
+            throw 'The existing Apple identity provider has an unexpected object ID.'
         }
-        $null = Invoke-SafeGraphRequest -Method PATCH -Uri "$graphRoot/identity/identityProviders/$providerId" -Token $accessToken -Body $updateBody
+        $null = Invoke-SafeGraphRequest -Method PATCH -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken -Body $providerBody
     }
 
-    if ($providerId -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') {
-        throw 'Microsoft Graph did not return a valid Google identity-provider object ID.'
+    if ($providerId -cne $appleProviderId) {
+        throw 'Microsoft Graph did not return the expected Apple identity-provider object ID.'
+    }
+
+    $verifiedProvider = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/identityProviders/$providerId" -Token $accessToken
+    if ([string]$verifiedProvider.developerId -cne $AppleTeamId -or
+        [string]$verifiedProvider.serviceId -cne $AppleServiceId -or
+        [string]$verifiedProvider.keyId -cne $AppleKeyId) {
+        throw 'Microsoft Graph did not confirm the expected non-secret Apple provider configuration.'
     }
 
     $expectedFlowName = "olga_signup_signin_$Environment"
     $flows = @()
-    $nextLink = "$graphRoot/identity/authenticationEventsFlows"
+    $nextLink = "$graphBetaRoot/identity/authenticationEventsFlows"
     while ($null -ne $nextLink) {
-        if (-not $nextLink.StartsWith("$graphRoot/identity/authenticationEventsFlows", [StringComparison]::Ordinal)) {
+        if (-not $nextLink.StartsWith("$graphBetaRoot/identity/authenticationEventsFlows", [StringComparison]::Ordinal)) {
             throw 'Microsoft Graph returned an unexpected user-flow pagination URL.'
         }
         $page = Invoke-SafeGraphRequest -Method GET -Uri $nextLink -Token $accessToken
@@ -224,37 +236,34 @@ try {
         throw 'The existing customer user flow has an invalid object ID.'
     }
 
-    $flowProvidersUri = "$graphRoot/identity/authenticationEventsFlows/$flowId/microsoft.graph.externalUsersSelfServiceSignUpEventsFlow/onAuthenticationMethodLoadStart/microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp/identityProviders"
-    $flowProviderIds = @($matchingFlows[0].onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
-    if ($flowProviderIds -notcontains 'EmailOtpSignup-OAUTH') {
-        throw 'The existing customer user flow does not contain Email OTP; refusing to modify its identity-provider associations.'
-    }
-
-    if ($flowProviderIds -notcontains 'Google-OAUTH' -and $flowProviderIds -notcontains $providerId) {
+    $flowProvidersUri = "$graphBetaRoot/identity/authenticationEventsFlows/$flowId/microsoft.graph.externalUsersSelfServiceSignUpEventsFlow/onAuthenticationMethodLoadStart/microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp/identityProviders"
+    $originalFlowProviderIds = @($matchingFlows[0].onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
+    if ($originalFlowProviderIds -notcontains $providerId) {
         $referenceBody = @{
-            '@odata.id' = "$graphRoot/identityProviders/Google-OAUTH"
+            '@odata.id' = "$graphBetaRoot/identityProviders/$providerId"
         }
         $null = Invoke-SafeGraphRequest -Method POST -Uri "$flowProvidersUri/`$ref" -Token $accessToken -Body $referenceBody
+    }
 
-        $verifiedFlow = Invoke-SafeGraphRequest -Method GET -Uri "$graphRoot/identity/authenticationEventsFlows/$flowId" -Token $accessToken
-        $verifiedFlowProviderIds = @($verifiedFlow.onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
-        if ($verifiedFlowProviderIds -notcontains 'Google-OAUTH' -and $verifiedFlowProviderIds -notcontains $providerId) {
-            throw 'Microsoft Graph did not confirm the Google association on the existing customer user flow.'
+    $verifiedFlow = Invoke-SafeGraphRequest -Method GET -Uri "$graphBetaRoot/identity/authenticationEventsFlows/$flowId" -Token $accessToken
+    $verifiedFlowProviderIds = @($verifiedFlow.onAuthenticationMethodLoadStart.identityProviders | ForEach-Object { [string]$_.id })
+    if ($verifiedFlowProviderIds -notcontains $providerId) {
+        throw 'Microsoft Graph did not confirm the Apple association on the existing customer user flow.'
+    }
+    foreach ($originalFlowProviderId in $originalFlowProviderIds) {
+        if ($verifiedFlowProviderIds -notcontains $originalFlowProviderId) {
+            throw 'An existing identity-provider association was not retained; manual review is required.'
         }
     }
 
     Write-Output $providerId
 }
 finally {
-    $clientSecret = $null
+    $privateKey = $null
     $accessToken = $null
-    $createBody = $null
-    $updateBody = $null
+    $providerBody = $null
     $referenceBody = $null
     $tokenJson = $null
     $tokenResult = $null
     Remove-Item "Env:$secretEnvironmentVariable" -ErrorAction SilentlyContinue
-    if ($secretPointer -ne [IntPtr]::Zero) {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($secretPointer)
-    }
 }

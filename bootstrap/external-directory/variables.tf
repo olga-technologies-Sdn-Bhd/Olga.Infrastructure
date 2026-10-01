@@ -53,6 +53,18 @@ variable "google_identity_provider_id" {
   }
 }
 
+variable "apple_identity_provider_id" {
+  description = "Optional non-secret Microsoft Graph object ID of the Apple identity provider in this external tenant. The Apple private key must never be passed to Terraform."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.apple_identity_provider_id == null || var.apple_identity_provider_id == "Apple-Managed-OIDC"
+    error_message = "apple_identity_provider_id must be null or Apple-Managed-OIDC as returned by the Apple identity-provider bootstrap."
+  }
+}
+
 variable "tenant_subdomain" {
   description = "External tenant subdomain without onmicrosoft.com."
   type        = string

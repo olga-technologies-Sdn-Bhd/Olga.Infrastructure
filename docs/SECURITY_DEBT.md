@@ -4,7 +4,7 @@
 **Review date:** 2026-10-23  
 **Scope:** Core API, NLP API, Swagger, health endpoints, and current development identity shortcuts
 
-Microsoft Entra External ID Email OTP and Google protect only the mobile sign-up/sign-in experience. Core API and NLP API remain directly callable without authentication or authorization. Swagger remains usable without a token. An `Authorization` header supplied by the mobile application is currently ignored.
+Microsoft Entra External ID Email OTP, Google, and Apple protect only the mobile sign-up/sign-in experience. Core API and NLP API remain directly callable without authentication or authorization. Swagger remains usable without a token. An `Authorization` header supplied by the mobile application is currently ignored.
 
 Do not represent the current system as API-protected. This exception must be reviewed on 2026-10-23 and remediated after October 22, 2026, or earlier if delivery capacity permits.
 
