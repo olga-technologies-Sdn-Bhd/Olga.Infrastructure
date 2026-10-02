@@ -1,8 +1,8 @@
 data "azuread_client_config" "current" {}
 
 locals {
-  api_display_name             = "olga_api_${var.environment}"
-  mobile_display_name          = "olga_mobile_${var.environment}"
+  api_display_name    = "olga_api_${var.environment}"
+  mobile_display_name = "olga_mobile_${var.environment}"
   user_flow_identity_providers = concat(
     [{ id = "EmailOtpSignup-OAUTH" }],
     var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }],
@@ -137,7 +137,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
     "@odata.type" = "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow"
     displayName   = "olga_signup_signin_${var.environment}"
     description   = "OLGA ${var.environment} customer sign-up and sign-in"
-    conditions     = {
+    conditions = {
       applications = {
         includeApplications = [
           {
@@ -156,7 +156,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
     }
     onAttributeCollection = {
       "@odata.type" = "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp"
-      attributes    = [
+      attributes = [
         {
           id                    = "email"
           displayName           = "Email Address"
