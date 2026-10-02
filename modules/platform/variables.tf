@@ -46,6 +46,7 @@ variable "enable_admin_static_web_app" { type = bool }
 variable "enable_azure_openai" { type = bool }
 variable "azure_openai_location" { type = string }
 variable "azure_openai_model_version" { type = string }
+variable "nlp_model_version" { type = string }
 variable "azure_openai_embedding_deployment_name" { type = string }
 variable "azure_openai_embedding_capacity" { type = number }
 variable "enable_content_safety" { type = bool }

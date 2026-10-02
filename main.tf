@@ -175,11 +175,11 @@ module "platform" {
   nlp_worker_image                         = var.nlp_worker_image
   core_application_delivery_enabled        = local.core_delivery_enabled
   core_health_probes_enabled               = var.core_health_probes_enabled
-  core_api_min_replicas                    = var.core_api_min_replicas
+  core_api_min_replicas                    = local.core_api_min_replicas
   nlp_application_delivery_enabled         = local.nlp_delivery_enabled
   nlp_worker_application_delivery_enabled  = var.nlp_worker_application_delivery_enabled
   nlp_health_probes_enabled                = var.nlp_health_probes_enabled
-  nlp_api_min_replicas                     = var.nlp_api_min_replicas
+  nlp_api_min_replicas                     = local.nlp_api_min_replicas
   enable_api_management                    = var.enable_api_management
   apim_publisher_name                      = var.apim_publisher_name
   apim_publisher_email                     = var.apim_publisher_email
@@ -187,6 +187,7 @@ module "platform" {
   enable_azure_openai                      = var.enable_azure_openai
   azure_openai_location                    = var.azure_openai_location
   azure_openai_model_version               = var.azure_openai_model_version
+  nlp_model_version                        = var.nlp_model_version
   azure_openai_embedding_deployment_name   = var.azure_openai_embedding_deployment_name
   azure_openai_embedding_capacity          = var.azure_openai_embedding_capacity
   enable_content_safety                    = var.enable_content_safety

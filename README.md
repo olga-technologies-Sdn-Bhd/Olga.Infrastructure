@@ -58,13 +58,17 @@ The first apply uses Microsoft's public Container Apps bootstrap image. Applicat
 ```hcl
 core_application_delivery_enabled = true
 core_health_probes_enabled         = true
+core_api_min_replicas              = 0
 nlp_application_delivery_enabled  = true
 nlp_health_probes_enabled          = true
+nlp_api_min_replicas               = 0
 ```
 
 The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush`. The Core deployment identity receives `Container Apps Contributor` scoped only to the Core API, while the NLP deployment identity receives `Container Apps Contributor` scoped separately to both the NLP API and NLP worker. The database deployment identity receives `Container Apps Jobs Operator` scoped only to the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
+
+When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `1` to keep both APIs warm. Explicit environment values override these defaults.
 
 The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
 
@@ -91,6 +95,7 @@ Changing the already-created dev server from delegated-subnet networking to this
 
 - Core API expects port `8080`, `/health`, `/ready`, `ConnectionStrings__PostgreSql`, and `ServiceAuthorization__Token`.
 - NLP API expects the same probes and secrets. It uses `EmbeddingProvider=Azure` and `EmbeddingProcessing__Mode=Queued`; evaluation endpoints retain direct managed-identity access to Azure OpenAI.
+- NLP API and worker use `AzureOpenAI__ModelVersion` for the stable application model identifier stored in `nlp.nlp_model_version`. This is distinct from `azure_openai_model_version`, which selects the Azure model catalog version.
 - The NLP worker remains at one replica for PostgreSQL polling and uses the same private Azure OpenAI endpoint with its own managed identity.
 - API Management is not enabled by default; enable it after the OpenAPI import, OIDC validation, throttling, and policy configuration are defined.
 

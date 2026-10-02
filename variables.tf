@@ -202,12 +202,12 @@ variable "core_health_probes_enabled" {
 }
 
 variable "core_api_min_replicas" {
-  description = "Minimum Core API replicas; use 0 for scale-to-zero environments and 1 to keep the API warm."
+  description = "Minimum Core API replicas. Defaults to 0 in dev and 1 in prod when omitted."
   type        = number
-  default     = 0
+  default     = null
 
   validation {
-    condition     = contains([0, 1], var.core_api_min_replicas)
+    condition     = var.core_api_min_replicas == null || contains([0, 1], var.core_api_min_replicas)
     error_message = "core_api_min_replicas must be 0 or 1."
   }
 }
@@ -231,12 +231,12 @@ variable "nlp_health_probes_enabled" {
 }
 
 variable "nlp_api_min_replicas" {
-  description = "Minimum NLP API replicas; use 0 for scale-to-zero environments and 1 to keep the API warm."
+  description = "Minimum NLP API replicas. Defaults to 0 in dev and 1 in prod when omitted."
   type        = number
-  default     = 0
+  default     = null
 
   validation {
-    condition     = contains([0, 1], var.nlp_api_min_replicas)
+    condition     = var.nlp_api_min_replicas == null || contains([0, 1], var.nlp_api_min_replicas)
     error_message = "nlp_api_min_replicas must be 0 or 1."
   }
 }
@@ -325,6 +325,17 @@ variable "azure_openai_model_version" {
   validation {
     condition     = var.azure_openai_model_version == "1"
     error_message = "text-embedding-3-small currently requires the approved Azure model version 1."
+  }
+}
+
+variable "nlp_model_version" {
+  description = "Stable NLP application model identifier; must match the active nlp.nlp_model_version record."
+  type        = string
+  default     = "azure-text-embedding-3-small-1536-v1"
+
+  validation {
+    condition     = var.nlp_model_version == trimspace(var.nlp_model_version) && length(var.nlp_model_version) > 0 && length(var.nlp_model_version) <= 128
+    error_message = "nlp_model_version must be between 1 and 128 characters with no leading or trailing whitespace."
   }
 }
 
