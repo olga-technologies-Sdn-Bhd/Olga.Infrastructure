@@ -137,7 +137,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
     "@odata.type" = "#microsoft.graph.externalUsersSelfServiceSignUpEventsFlow"
     displayName   = "olga_signup_signin_${var.environment}"
     description   = "OLGA ${var.environment} customer sign-up and sign-in"
-    conditions = {
+    conditions     = {
       applications = {
         includeApplications = [
           {
