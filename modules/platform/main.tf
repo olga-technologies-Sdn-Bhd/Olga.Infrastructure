@@ -318,6 +318,10 @@ resource "azurerm_container_app" "nlp_api" {
         value = var.azure_openai_embedding_deployment_name
       }
       env {
+        name  = "AzureOpenAI__ModelVersion"
+        value = var.azure_openai_model_version
+      }
+      env {
         name  = "AzureOpenAI__Dimensions"
         value = "1536"
       }
