@@ -201,6 +201,17 @@ variable "core_health_probes_enabled" {
   default     = true
 }
 
+variable "core_api_min_replicas" {
+  description = "Minimum Core API replicas; use 0 for scale-to-zero environments and 1 to keep the API warm."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.core_api_min_replicas)
+    error_message = "core_api_min_replicas must be 0 or 1."
+  }
+}
+
 variable "nlp_application_delivery_enabled" {
   description = "Configure NLP API for its ACR-hosted .NET image on port 8080."
   type        = bool
@@ -217,6 +228,17 @@ variable "nlp_health_probes_enabled" {
   description = "Enable NLP liveness (/health) and database-readiness (/ready) probes."
   type        = bool
   default     = true
+}
+
+variable "nlp_api_min_replicas" {
+  description = "Minimum NLP API replicas; use 0 for scale-to-zero environments and 1 to keep the API warm."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.nlp_api_min_replicas)
+    error_message = "nlp_api_min_replicas must be 0 or 1."
+  }
 }
 
 variable "github_organization_subject" {

@@ -147,7 +147,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
       }
     }
     onAuthenticationMethodLoadStart = {
-      "@odata.type" = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
+      "@odata.type"     = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
       identityProviders = local.user_flow_identity_providers
     }
     onInteractiveAuthFlowStart = {
@@ -156,7 +156,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
     }
     onAttributeCollection = {
       "@odata.type" = "#microsoft.graph.onAttributeCollectionExternalUsersSelfServiceSignUp"
-      attributes = [
+      attributes    = [
         {
           id                    = "email"
           displayName           = "Email Address"

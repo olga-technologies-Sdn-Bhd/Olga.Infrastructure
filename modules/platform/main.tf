@@ -161,7 +161,7 @@ resource "azurerm_container_app" "core_api" {
   }
 
   template {
-    min_replicas = 0
+    min_replicas = var.core_api_min_replicas
     max_replicas = 1
 
     container {
@@ -276,7 +276,7 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   template {
-    min_replicas = 1
+    min_replicas = var.nlp_api_min_replicas
     max_replicas = 1
 
     container {
