@@ -32,6 +32,8 @@ https://<tenant-id>.ciamlogin.com/<tenant-subdomain>/federation/oauth2
 https://<tenant-subdomain>.ciamlogin.com/<tenant-id>/federation/oauth2
 ```
 
+Do not add `olga-dev://auth` or `olga-dev://auth/` to Apple Developer. Apple returns to Entra through the HTTPS federation URLs above; Entra then returns to the mobile app through the separately registered public-client callback. For dev, that callback is exactly `olga-dev://auth` with no trailing slash. The iOS app claims only the `olga-dev` URL scheme.
+
 Create a separate **Sign in with Apple** key for the environment when Apple account limits permit it. Record the non-secret Team ID and Key ID, download the `.p8` file once, and place it immediately in the approved secret manager. Leave the optional server-to-server notification endpoint empty until OLGA implements a dedicated HTTPS endpoint that validates Apple's signed notifications.
 
 ## GitHub Environment configuration

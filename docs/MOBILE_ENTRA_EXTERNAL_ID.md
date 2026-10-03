@@ -2,7 +2,7 @@
 
 This runbook is for the OLGA React Native/Expo application. The current implementation uses one Microsoft-hosted, browser-delegated user flow for Email OTP, Google, and Apple. The mobile application must never receive provider credentials or generate, send, log, persist, or validate OTP values itself.
 
-The mobile source code is not in this repository, so the client-side steps must be completed in the mobile repository. `bootstrap/external-directory` enables public-client flows and the native authentication APIs on the mobile registration. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
+The mobile source code is not in this repository, so client-side changes must be completed in the mobile repository. `bootstrap/external-directory` enables **Allow public client flows** and **Enable native authentication** on the mobile registration. These settings permit native authentication; they do not convert an `expo-auth-session` browser flow into an in-app flow. Until the mobile client implements Microsoft's native authentication SDK or API, Email OTP, Google, and Apple remain browser-delegated. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
 
 ## 1. Use the dev runtime values
 
@@ -45,6 +45,8 @@ The native application must claim the same URI scheme that is registered in Entr
 ```
 
 Keep the mobile project's existing `ios.bundleIdentifier`, `android.package`, and other Expo settings. The resulting callback must be exactly `olga-dev://auth`.
+
+Treat the callback as an exact, case-sensitive value. The canonical dev callback has **no trailing slash**: do not substitute `olga-dev://auth/`. In Entra, verify it under **App registrations** > **olga_mobile_dev** > **Authentication** > **Mobile and desktop applications** (or `publicClient.redirectUris` in the manifest). In iOS/Expo, register the `olga-dev` URL scheme and pass the exact canonical callback in the authorization request. Do not register this custom callback in Apple Developer; Apple returns to Entra through separate HTTPS federation URLs.
 
 Use an Expo development build or a standalone app to test the native callback. Expo Go generates an `exp://` callback instead of claiming `olga-dev://`, so it is not the correct end-to-end test for this registration.
 
@@ -246,6 +248,8 @@ For Google, the customer selects Google on the hosted page or uses the accelerat
 
 Apple follows the same browser-delegated pattern: the customer selects Apple on the hosted page or uses the accelerated Apple action and returns through the existing Entra callback and PKCE exchange. Do not add the Apple `.p8` key or a direct Apple authentication integration to the mobile build. Google and Apple remain web flows even when an application later adopts native authentication for local accounts.
 
+The Microsoft-hosted **Are you trying to sign in to olga_mobile_dev?** page is a security confirmation for the browser flow returning to a custom URI scheme; it is not the API consent page. The directory bootstrap already preauthorizes and grants the API scope. A successful native Email OTP flow avoids this browser page. Google and Apple still open a browser and may show it while the app uses `olga-dev://auth`. Removing it for those providers requires a separately designed, verified HTTPS Universal Link/App Link callback; enabling native authentication alone does not remove it.
+
 The browser-delegated Email OTP experience includes Microsoft's **No account? Create one** step for a new address. Removing that step requires a separately designed and implemented native-authentication sign-up flow; it is not part of this `expo-auth-session` implementation. Native sign-in and sign-up use different protocol starts, and the `registration_required` capability concerns strong-authentication-method registration rather than automatic account creation for an unknown email.
 
 In the current browser-delegated flow, do not render an OTP input in OLGA or intercept the OTP. If a future approved native-authentication implementation collects an OTP, keep it only in memory and submit it directly to Entra through a supported SDK or API. Never add a custom `/send-otp` or `/verify-otp` endpoint, and never put OTP or token values in logs, crash reports, analytics, Redux persistence, AsyncStorage, or SQLite.
@@ -318,6 +322,8 @@ Never log the authorization response object because it can contain a code or tok
 ## 10. End-to-end dev verification
 
 Use a real development build on a device, then verify Email OTP and every configured federated provider:
+
+Before testing, open **olga_mobile_dev** > **Authentication** and confirm **Allow public client flows** and **Enable native authentication** are enabled, and that the registered callback is exactly `olga-dev://auth`.
 
 1. Start with no `olga.entra.session` secure-store entry.
 2. Tap **Sign up or sign in with email**.
