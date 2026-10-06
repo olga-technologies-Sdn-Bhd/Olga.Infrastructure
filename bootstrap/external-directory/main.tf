@@ -167,7 +167,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
         {
           id                    = "displayName"
           displayName           = "Display Name"
-          description           = "Display name of the user"
+          description           = var.environment == "prd" ? "Display Name of the User." : "Display name of the user"
           userFlowAttributeType = "builtIn"
           dataType              = "string"
         }
