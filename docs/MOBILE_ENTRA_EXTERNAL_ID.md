@@ -1,14 +1,15 @@
 # Mobile sign-up and sign-in with Microsoft Entra External ID
 
-This runbook is for the OLGA React Native/Expo application. The same Microsoft-hosted user flow offers Email OTP and its configured federated providers, including Google and Apple. It also documents the infrastructure prerequisite for replacing Email OTP's **No account? Create one** branch with a native-authentication flow. The mobile application must never receive provider credentials or generate, send, log, persist, or validate OTP values itself; it may collect an OTP only to submit it directly to Microsoft Entra during native authentication.
+This runbook is for the OLGA React Native/Expo application. The current implementation uses one Microsoft-hosted, browser-delegated user flow for Email OTP, Google, and Apple. The mobile application must never receive provider credentials or generate, send, log, persist, or validate OTP values itself.
 
-The mobile source code is not in this repository, so the client-side steps must be completed in the mobile repository. `bootstrap/external-directory` enables public-client flows and the native authentication APIs on the mobile registration. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
+The mobile source code is not in this repository, so client-side changes must be completed in the mobile repository. `bootstrap/external-directory` enables **Allow public client flows** and **Enable native authentication** on the mobile registration. These settings permit native authentication; they do not convert an `expo-auth-session` browser flow into an in-app flow. Until the mobile client implements Microsoft's native authentication SDK or API, Email OTP, Google, and Apple remain browser-delegated. The infrastructure values shown here are the tested `dev` values. Production must use its own tenant, registrations, user flow, build configuration, and redirect scheme; do not copy the dev values into a production build.
 
 ## 1. Use the dev runtime values
 
 Add these non-secret values to the mobile app's dev environment:
 
 ```dotenv
+EXPO_PUBLIC_ENVIRONMENT=dev
 EXPO_PUBLIC_ENTRA_CLIENT_ID=e8db01a0-3a93-48e0-86fa-68123e026088
 EXPO_PUBLIC_ENTRA_TENANT_ID=d6b05a66-a3b7-442c-b56f-d4d7a9e154ba
 EXPO_PUBLIC_ENTRA_AUTHORITY=https://olgaconnectdev.ciamlogin.com/
@@ -44,6 +45,8 @@ The native application must claim the same URI scheme that is registered in Entr
 ```
 
 Keep the mobile project's existing `ios.bundleIdentifier`, `android.package`, and other Expo settings. The resulting callback must be exactly `olga-dev://auth`.
+
+Treat the callback as an exact, case-sensitive value. The canonical dev callback has **no trailing slash**: do not substitute `olga-dev://auth/`. In Entra, verify it under **App registrations** > **olga_mobile_dev** > **Authentication** > **Mobile and desktop applications** (or `publicClient.redirectUris` in the manifest). In iOS/Expo, register the `olga-dev` URL scheme and pass the exact canonical callback in the authorization request. Do not register this custom callback in Apple Developer; Apple returns to Entra through separate HTTPS federation URLs.
 
 Use an Expo development build or a standalone app to test the native callback. Expo Go generates an `exp://` callback instead of claiming `olga-dev://`, so it is not the correct end-to-end test for this registration.
 
@@ -126,9 +129,17 @@ WebBrowser.maybeCompleteAuthSession();
 
 const SESSION_KEY = 'olga.entra.session';
 
-export function useEntraLogin() {
+export type EntraLoginTarget = 'chooser' | 'google' | 'apple';
+
+const domainHintByTarget: Partial<Record<EntraLoginTarget, string>> = {
+  google: 'google',
+  apple: 'apple',
+};
+
+export function useEntraLogin(target: EntraLoginTarget = 'chooser') {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const exchangedCode = useRef<string | null>(null);
+  const domainHint = domainHintByTarget[target];
   const issuer = `${entraConfig.authority}${entraConfig.tenantId}/v2.0`;
   const discovery = AuthSession.useAutoDiscovery(issuer);
   const redirectUri = AuthSession.makeRedirectUri({
@@ -152,6 +163,7 @@ export function useEntraLogin() {
       responseType: AuthSession.ResponseType.Code,
       scopes,
       usePKCE: true,
+      ...(domainHint ? { extraParams: { domain_hint: domainHint } } : {}),
     },
     discovery,
   );
@@ -202,7 +214,25 @@ export function useEntraLogin() {
 }
 ```
 
-Connect `login()` to the app's **Sign up or sign in** button and disable the button while `loginEnabled` is false. The Microsoft-hosted page presents Email OTP and the associated federated providers from the same environment-specific user flow. For Email OTP, new-customer sign-up and existing-customer sign-in follow this sequence:
+Connect `login()` to the app's authentication buttons and disable a button while its `loginEnabled` is false. The Microsoft-hosted page presents Email OTP and the associated federated providers from the same environment-specific user flow.
+
+### Mobile UI provider contract
+
+No additional Expo environment placeholder is required for Apple or Google. In particular, do not add the Apple Service ID, Apple provider object ID, Team ID, Key ID, `.p8` key, Google client ID, or Google client secret to the mobile app. Those values belong to the provider-to-Entra configuration; the app continues to use only the existing Entra client ID, authority, redirect URI, and scopes from section 1.
+
+The mobile team can use either one generic button or separate provider buttons:
+
+| UI action | Hook target | Authorization request behavior |
+| --- | --- | --- |
+| **Sign up or sign in** | `useEntraLogin('chooser')` | No `domain_hint`; Entra displays Email OTP, Google, and Apple. |
+| **Continue with Google** | `useEntraLogin('google')` | Adds `domain_hint=google` and Entra routes to Google. |
+| **Continue with Apple** | `useEntraLogin('apple')` | Adds `domain_hint=apple` and Entra routes to Apple. |
+
+The UI team owns the button components and styling. Each action calls the `login()` function returned by its corresponding hook target. Keep these routing targets unchanged and do not import or call a direct Apple or Google authentication SDK.
+
+All three requests must retain the same Entra issuer, client ID, callback, scopes, state validation, PKCE exchange, secure storage, refresh, and sign-out implementation. `domain_hint` selects the upstream provider only; Apple must still be launched through Entra and must return through `olga-dev://auth`. There is no supported local-email `domain_hint` in this contract, so the generic route is used when the customer needs the hosted Email OTP option.
+
+For Email OTP, new-customer sign-up and existing-customer sign-in follow this sequence:
 
 1. The app opens the system browser.
 2. The customer enters an email address on the Microsoft-hosted page.
@@ -214,13 +244,15 @@ Connect `login()` to the app's **Sign up or sign in** button and disable the but
 8. The app exchanges the authorization code with the PKCE verifier and no client secret.
 9. The app stores the resulting tokens in `expo-secure-store`.
 
-For Google, the customer selects Google on the hosted page, completes authentication with Google, and returns through the same registered callback and PKCE exchange. The Google client secret belongs only to the server-side Entra identity-provider configuration; it must never be placed in the mobile application or its build environment.
+For Google, the customer selects Google on the hosted page or uses the accelerated Google button, completes authentication with Google, and returns through the same registered callback and PKCE exchange. The Google client secret belongs only to the server-side Entra identity-provider configuration; it must never be placed in the mobile application or its build environment.
 
-Apple follows the same browser-delegated pattern: the customer selects Apple on the hosted page and returns through the existing Entra callback and PKCE exchange. Do not add the Apple `.p8` key or a direct Apple authentication integration to the mobile build. Entra native authentication supports the local Email OTP path, not federated Apple or Google sign-in.
+Apple follows the same browser-delegated pattern: the customer selects Apple on the hosted page or uses the accelerated Apple action and returns through the existing Entra callback and PKCE exchange. Do not add the Apple `.p8` key or a direct Apple authentication integration to the mobile build. Google and Apple remain web flows even when an application later adopts native authentication for local accounts.
 
-This browser-delegated implementation cannot remove step 3. To provide a single email entry with no separate account-creation confirmation, replace this client flow with Microsoft Entra Native Authentication. Initiate authentication with the `registration_required` capability. For an existing identity, continue the email-OTP sign-in challenge; when Entra requires registration, continue directly into the email-OTP sign-up challenge without asking the customer to select **Create one** or re-enter the email. Keep the outward response identical for both paths to avoid exposing whether an email address is already registered. Create the customer identity only after Entra accepts the OTP, then use the returned continuation token to sign the customer in automatically.
+The Microsoft-hosted **Are you trying to sign in to olga_mobile_dev?** page is a security confirmation for the browser flow returning to a custom URI scheme; it is not the API consent page. The directory bootstrap already preauthorizes and grants the API scope. A successful native Email OTP flow avoids this browser page. Google and Apple still open a browser and may show it while the app uses `olga-dev://auth`. Removing it for those providers requires a separately designed, verified HTTPS Universal Link/App Link callback; enabling native authentication alone does not remove it.
 
-In the browser-delegated flow, do not render an OTP input in OLGA or intercept the OTP. In the native-authentication flow, the app may collect the OTP only in memory and submit it directly to Entra through the supported native SDK or API. Never add a custom `/send-otp` or `/verify-otp` endpoint, and never put OTP/token values in logs, crash reports, analytics, Redux persistence, AsyncStorage, or SQLite.
+The browser-delegated Email OTP experience includes Microsoft's **No account? Create one** step for a new address. Removing that step requires a separately designed and implemented native-authentication sign-up flow; it is not part of this `expo-auth-session` implementation. Native sign-in and sign-up use different protocol starts, and the `registration_required` capability concerns strong-authentication-method registration rather than automatic account creation for an unknown email.
+
+In the current browser-delegated flow, do not render an OTP input in OLGA or intercept the OTP. If a future approved native-authentication implementation collects an OTP, keep it only in memory and submit it directly to Entra through a supported SDK or API. Never add a custom `/send-otp` or `/verify-otp` endpoint, and never put OTP or token values in logs, crash reports, analytics, Redux persistence, AsyncStorage, or SQLite.
 
 ## 6. Restore and refresh the session
 
@@ -291,6 +323,8 @@ Never log the authorization response object because it can contain a code or tok
 
 Use a real development build on a device, then verify Email OTP and every configured federated provider:
 
+Before testing, open **olga_mobile_dev** > **Authentication** and confirm **Allow public client flows** and **Enable native authentication** are enabled, and that the registered callback is exactly `olga-dev://auth`.
+
 1. Start with no `olga.entra.session` secure-store entry.
 2. Tap **Sign up or sign in with email**.
 3. Confirm the browser host is exactly `olgaconnectdev.ciamlogin.com`.
@@ -304,11 +338,9 @@ Use a real development build on a device, then verify Email OTP and every config
 11. Sign out and confirm the secure-store entry is deleted.
 12. Repeat with the same email address and confirm existing-customer sign-in succeeds.
 13. Confirm cancel, incorrect/expired OTP, offline, and callback-error paths show safe retry behavior.
-14. Start a fresh hosted session, select Google, authenticate with an approved dev Google test identity, and confirm the same dev callback, issuer, audience, PKCE, secure-storage, refresh, and sign-out rules.
-15. Start another fresh hosted session, select Apple, test both **Share My Email** and **Hide My Email**, and confirm the same callback and token-handling rules.
+14. Start a fresh hosted session from **Continue with Google** (or select Google in the chooser), authenticate with an approved dev Google test identity, and confirm the same dev callback, issuer, audience, PKCE, secure-storage, refresh, and sign-out rules.
+15. Start another fresh hosted session from **Continue with Apple** (or select Apple in the chooser), test both **Share My Email** and **Hide My Email**, and confirm the same callback and token-handling rules.
 16. Confirm Email OTP, Google, and Apple remain visible in `olga_signup_signin_dev` and that no provider credential is present in the mobile bundle or environment.
-
-For the direct-registration native flow, additionally verify that the customer enters the email only once, an unknown address proceeds directly to the OTP challenge without a **Create one** prompt, the account does not exist before successful OTP verification, registration automatically yields a signed-in session, and the UI does not reveal whether an email was already registered.
 
 The infrastructure-side dev objects expected by this test are:
 
@@ -329,7 +361,7 @@ Do not produce a production build until the separate production External ID tena
 - claim only the production redirect scheme (currently planned as `olga://auth`);
 - contain no dev tenant, client, scope, callback, token, or customer data;
 - fail its build/config validation when any production value is missing;
-- use the same browser-delegated Authorization Code with PKCE flow and secure-storage rules.
+- use the same browser-delegated Authorization Code with PKCE flow and secure-storage rules; and
 - contain no provider private credential and use only the Google and Apple providers configured in the prd external tenant.
 
 Production infrastructure execution remains manual-only. Creating the dev setup does not create or modify the production tenant.
@@ -338,12 +370,11 @@ Production infrastructure execution remains manual-only. Creating the dev setup 
 
 Before the mobile change is marked complete, confirm that:
 
-- the app uses a supported Entra native-authentication SDK or API and sends the `registration_required` capability;
-- an unknown email continues directly into registration without a **Create one** prompt or a second email entry;
-- the account is created only after successful Entra OTP verification and the returned continuation token signs the customer in automatically;
-- the UI and error handling do not disclose whether the submitted email was already registered;
-- the dev build claims `olga-dev://auth` for web fallback and does not contain a production callback;
+- the app uses the browser-delegated Entra flow implemented in this runbook for Email OTP, Google, and Apple;
+- the dev build claims `olga-dev://auth` and does not contain a production callback;
 - the app requests `openid`, `profile`, `email`, `offline_access`, and the dev `access_as_user` scope, and contains no mobile client secret;
+- a dedicated **Continue with Apple** button, when present, sends `domain_hint=apple` to the existing Entra authorization endpoint rather than invoking Apple directly;
+- no Apple Service ID, provider object ID, Team ID, Key ID, or `.p8` key is included in mobile source, environment variables, or build configuration;
 - new-customer sign-up and existing-customer sign-in both complete on a physical device;
 - Email OTP, Google, and Apple complete through the matching environment's hosted user flow;
 - access, refresh, and ID tokens are stored only in OS-backed secure storage or kept in memory;
@@ -358,6 +389,9 @@ Before the mobile change is marked complete, confirm that:
 - [Expo AuthSession](https://docs.expo.dev/versions/latest/sdk/auth-session/)
 - [Expo authentication guide](https://docs.expo.dev/guides/authentication/)
 - [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/)
+- [Microsoft Entra External ID identity providers and issuer acceleration](https://learn.microsoft.com/en-us/entra/external-id/customers/concept-authentication-methods-customers)
+- [Microsoft Entra authentication approach comparison](https://learn.microsoft.com/en-us/entra/external-id/customers/concept-choose-authentication-approach)
 - [Microsoft Entra External ID endpoint formats](https://learn.microsoft.com/en-us/entra/external-id/customers/how-to-custom-url-domain#configure-your-applications)
 - [Microsoft Entra native authentication](https://learn.microsoft.com/en-us/entra/identity-platform/concept-native-authentication)
+- [Microsoft Entra native authentication challenge types and capabilities](https://learn.microsoft.com/en-us/entra/identity-platform/concept-native-authentication-challenge-types)
 - [Microsoft Entra native authentication API](https://learn.microsoft.com/en-us/entra/identity-platform/reference-native-authentication-api)

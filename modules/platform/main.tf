@@ -4,6 +4,7 @@ resource "azurerm_container_app_environment" "this" {
   resource_group_name        = var.resource_group_name
   infrastructure_subnet_id   = var.container_apps_subnet_id
   log_analytics_workspace_id = var.log_analytics_workspace_id
+  zone_redundancy_enabled     = var.environment == "prod" ? true : null
   tags                       = var.tags
 
   workload_profile {
@@ -161,14 +162,22 @@ resource "azurerm_container_app" "core_api" {
   }
 
   template {
-    min_replicas = 0
-    max_replicas = 1
+    min_replicas = var.core_api_min_replicas
+    max_replicas = var.environment == "prod" ? 5 : 1
+
+    dynamic "http_scale_rule" {
+      for_each = var.environment == "prod" ? [1] : []
+      content {
+        name                = "http-concurrency"
+        concurrent_requests = "50"
+      }
+    }
 
     container {
       name   = "core-api"
       image  = var.core_api_image
-      cpu    = 0.25
-      memory = "0.5Gi"
+      cpu    = var.environment == "prod" ? 0.5 : 0.25
+      memory = var.environment == "prod" ? "1Gi" : "0.5Gi"
 
       env {
         name  = "ASPNETCORE_ENVIRONMENT"
@@ -276,14 +285,22 @@ resource "azurerm_container_app" "nlp_api" {
   }
 
   template {
-    min_replicas = 0
-    max_replicas = 1
+    min_replicas = var.nlp_api_min_replicas
+    max_replicas = var.environment == "prod" ? 5 : 1
+
+    dynamic "http_scale_rule" {
+      for_each = var.environment == "prod" ? [1] : []
+      content {
+        name                = "http-concurrency"
+        concurrent_requests = "25"
+      }
+    }
 
     container {
       name   = "nlp-api"
       image  = var.nlp_api_image
-      cpu    = 0.25
-      memory = "0.5Gi"
+      cpu    = var.environment == "prod" ? 1.0 : 0.25
+      memory = var.environment == "prod" ? "2Gi" : "0.5Gi"
 
       env {
         name  = "ASPNETCORE_ENVIRONMENT"
@@ -316,6 +333,10 @@ resource "azurerm_container_app" "nlp_api" {
       env {
         name  = "AzureOpenAI__DeploymentName"
         value = var.azure_openai_embedding_deployment_name
+      }
+      env {
+        name  = "AzureOpenAI__ModelVersion"
+        value = var.nlp_model_version
       }
       env {
         name  = "AzureOpenAI__Dimensions"
@@ -414,14 +435,14 @@ resource "azurerm_container_app" "nlp_worker" {
   }
 
   template {
-    min_replicas = 1
-    max_replicas = 1
+    min_replicas = var.environment == "prod" ? 2 : 1
+    max_replicas = var.environment == "prod" ? 2 : 1
 
     container {
       name   = "nlp-worker"
       image  = var.nlp_worker_image
-      cpu    = 0.25
-      memory = "0.5Gi"
+      cpu    = var.environment == "prod" ? 1.0 : 0.25
+      memory = var.environment == "prod" ? "2Gi" : "0.5Gi"
 
       env {
         name  = "DOTNET_ENVIRONMENT"
@@ -448,8 +469,8 @@ resource "azurerm_container_app" "nlp_worker" {
         value = var.azure_openai_embedding_deployment_name
       }
       env {
-        name  = "AzureOpenAI__Model"
-        value = "text-embedding-3-small"
+        name  = "AzureOpenAI__ModelVersion"
+        value = var.nlp_model_version
       }
       env {
         name  = "AzureOpenAI__Dimensions"

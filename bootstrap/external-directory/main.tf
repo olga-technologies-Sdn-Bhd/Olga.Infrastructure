@@ -1,8 +1,8 @@
 data "azuread_client_config" "current" {}
 
 locals {
-  api_display_name             = "olga_api_${var.environment}"
-  mobile_display_name          = "olga_mobile_${var.environment}"
+  api_display_name    = "olga_api_${var.environment}"
+  mobile_display_name = "olga_mobile_${var.environment}"
   user_flow_identity_providers = concat(
     [{ id = "EmailOtpSignup-OAUTH" }],
     var.google_identity_provider_id == null ? [] : [{ id = var.google_identity_provider_id }],
@@ -147,7 +147,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
       }
     }
     onAuthenticationMethodLoadStart = {
-      "@odata.type" = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
+      "@odata.type"     = "#microsoft.graph.onAuthenticationMethodLoadStartExternalUsersSelfServiceSignUp"
       identityProviders = local.user_flow_identity_providers
     }
     onInteractiveAuthFlowStart = {
@@ -167,7 +167,7 @@ resource "msgraph_resource" "signup_signin_user_flow" {
         {
           id                    = "displayName"
           displayName           = "Display Name"
-          description           = "Display name of the user"
+          description           = var.environment == "prd" ? "Display Name of the User." : "Display name of the user"
           userFlowAttributeType = "builtIn"
           dataType              = "string"
         }

@@ -100,6 +100,28 @@ variable "postgres_storage_mb" {
   default = 32768
 }
 
+variable "postgres_prod_sku_name" {
+  description = "Production PostgreSQL compute SKU. Development continues to use postgres_sku_name."
+  type        = string
+  default     = "GP_Standard_D2ds_v5"
+
+  validation {
+    condition     = startswith(var.postgres_prod_sku_name, "GP_") || startswith(var.postgres_prod_sku_name, "MO_")
+    error_message = "postgres_prod_sku_name must be a General Purpose or Memory Optimized SKU."
+  }
+}
+
+variable "postgres_prod_storage_mb" {
+  description = "Production PostgreSQL storage in MiB. Development continues to use postgres_storage_mb."
+  type        = number
+  default     = 131072
+
+  validation {
+    condition     = var.postgres_prod_storage_mb >= 32768
+    error_message = "postgres_prod_storage_mb must be at least 32768 MiB."
+  }
+}
+
 variable "postgres_allowed_extensions" {
   description = "PostgreSQL extensions allowlisted through the azure.extensions server parameter."
   type        = list(string)
@@ -201,6 +223,20 @@ variable "core_health_probes_enabled" {
   default     = true
 }
 
+variable "core_api_min_replicas" {
+  description = "Minimum Core API replicas. Defaults to 0 in dev and 2 in prod when omitted."
+  type        = number
+  default     = null
+
+  validation {
+    condition = var.core_api_min_replicas == null || (
+      (var.environment == "prod" && var.core_api_min_replicas >= 2 && var.core_api_min_replicas <= 5) ||
+      (var.environment == "dev" && contains([0, 1], var.core_api_min_replicas))
+    )
+    error_message = "core_api_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
+}
+
 variable "nlp_application_delivery_enabled" {
   description = "Configure NLP API for its ACR-hosted .NET image on port 8080."
   type        = bool
@@ -217,6 +253,20 @@ variable "nlp_health_probes_enabled" {
   description = "Enable NLP liveness (/health) and database-readiness (/ready) probes."
   type        = bool
   default     = true
+}
+
+variable "nlp_api_min_replicas" {
+  description = "Minimum NLP API replicas. Defaults to 0 in dev and 2 in prod when omitted."
+  type        = number
+  default     = null
+
+  validation {
+    condition = var.nlp_api_min_replicas == null || (
+      (var.environment == "prod" && var.nlp_api_min_replicas >= 2 && var.nlp_api_min_replicas <= 5) ||
+      (var.environment == "dev" && contains([0, 1], var.nlp_api_min_replicas))
+    )
+    error_message = "nlp_api_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
 }
 
 variable "github_organization_subject" {
@@ -303,6 +353,17 @@ variable "azure_openai_model_version" {
   validation {
     condition     = var.azure_openai_model_version == "1"
     error_message = "text-embedding-3-small currently requires the approved Azure model version 1."
+  }
+}
+
+variable "nlp_model_version" {
+  description = "Stable NLP application model identifier; must match the active nlp.nlp_model_version record."
+  type        = string
+  default     = "azure-text-embedding-3-small-1536-v1"
+
+  validation {
+    condition     = var.nlp_model_version == trimspace(var.nlp_model_version) && length(var.nlp_model_version) > 0 && length(var.nlp_model_version) <= 128
+    error_message = "nlp_model_version must be between 1 and 128 characters with no leading or trailing whitespace."
   }
 }
 

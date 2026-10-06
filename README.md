@@ -31,7 +31,7 @@ Terraform grants every principal listed for the active environment in `platform_
 
 For local deployment, create `olga-connect-dev.auto.tfvars` with the required non-secret values declared in `variables.tf`. Terraform loads this file automatically, and Git ignores it.
 
-External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Dev Tenant Bootstrap** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID - Configure Google Provider** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and associate it with the existing customer user flow through Microsoft Graph. It verifies that Email OTP remains associated and does not run Terraform or modify the existing applications, service principals, owners, attributes, or native-authentication settings. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. Production uses an independent tenant, OIDC identity, Google credential, and GitHub Environment configuration.
+External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Initial Dev Tenant Creation** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID - Configure Google Provider** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and associate it with the existing customer user flow through Microsoft Graph. It verifies that Email OTP remains associated and does not run Terraform or modify the existing applications, service principals, owners, attributes, or native-authentication settings. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. Production uses an independent tenant, OIDC identity, Google credential, and GitHub Environment configuration.
 
 The separate protected **External ID - Configure Apple Provider** workflow creates or rotates only Apple and adds it to that environment's existing customer user flow. It records and verifies preservation of every current provider association, consumes the `.p8` key only from the matching GitHub Environment secret, and does not rerun or depend on Google. Dev and prd use independent Apple Service IDs and signing credentials; see [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md).
 
@@ -58,13 +58,19 @@ The first apply uses Microsoft's public Container Apps bootstrap image. Applicat
 ```hcl
 core_application_delivery_enabled = true
 core_health_probes_enabled         = true
+core_api_min_replicas              = 0
 nlp_application_delivery_enabled  = true
 nlp_health_probes_enabled          = true
+nlp_api_min_replicas               = 0
 ```
 
 The infrastructure apply creates one deployment identity per repository and trusts only that repository's immutable subject for the matching GitHub Environment. Core and NLP receive `AcrPush`. The Core deployment identity receives `Container Apps Contributor` scoped only to the Core API, while the NLP deployment identity receives `Container Apps Contributor` scoped separately to both the NLP API and NLP worker. The database deployment identity receives `Container Apps Jobs Operator` scoped only to the migration job. After apply, copy each corresponding deployment identity client-ID output to that repository's GitHub Environment as `AZURE_CLIENT_ID`.
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
+
+When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `2` for availability during replica failure or maintenance. In production, Core scales from 2 to 5 replicas at 50 concurrent requests per replica with 0.5 vCPU/1 GiB each; NLP scales from 2 to 5 at 25 concurrent requests per replica with 1 vCPU/2 GiB each. The production NLP worker runs two 1-vCPU/2-GiB replicas. Development retains its original replica counts and 0.25-vCPU/0.5-GiB allocations.
+
+Production also uses a zone-redundant Container Apps environment, Premium zone-redundant ACR, ZRS Blob Storage, and PostgreSQL General Purpose compute with zone-redundant high availability, 128 GiB storage, automatic storage growth, 35-day retention, and geo-redundant backup. Production telemetry retains 90 days, has a 5-GB daily cap with full sampling, and alerts the configured `BUDGET_ALERT_EMAILS` recipients for replica loss, container CPU/memory pressure, and PostgreSQL CPU/memory/storage pressure. Confirm SKU, availability-zone, and geo-backup support in the selected Azure region during the reviewed production plan.
 
 The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
 
@@ -91,6 +97,7 @@ Changing the already-created dev server from delegated-subnet networking to this
 
 - Core API expects port `8080`, `/health`, `/ready`, `ConnectionStrings__PostgreSql`, and `ServiceAuthorization__Token`.
 - NLP API expects the same probes and secrets. It uses `EmbeddingProvider=Azure` and `EmbeddingProcessing__Mode=Queued`; evaluation endpoints retain direct managed-identity access to Azure OpenAI.
+- NLP API and worker use `AzureOpenAI__ModelVersion` for the stable application model identifier stored in `nlp.nlp_model_version`. This is distinct from `azure_openai_model_version`, which selects the Azure model catalog version.
 - The NLP worker remains at one replica for PostgreSQL polling and uses the same private Azure OpenAI endpoint with its own managed identity.
 - API Management is not enabled by default; enable it after the OpenAPI import, OIDC validation, throttling, and policy configuration are defined.
 
@@ -100,38 +107,10 @@ Microsoft Entra External ID owns Email OTP, Google and Apple federation, and mob
 
 ### React Native / Expo authentication handoff
 
-The mobile application continues to use the existing Microsoft Entra browser-delegated Authorization Code flow with PKCE. Google and Apple are presented by the same Entra-hosted page as Email OTP, so the mobile application must not add direct social-provider SDKs or provider credentials. All methods return through the same Entra callback and token exchange.
+The mobile application uses Microsoft Entra's browser-delegated Authorization Code flow with PKCE for Email OTP, Google, and Apple. A generic action opens the hosted chooser; optional provider-specific actions use `domain_hint=google` or `domain_hint=apple` against the same Entra authorization endpoint. All methods return through the same registered callback and token exchange. Do not add direct Google or Apple SDKs.
 
-Install the Expo-compatible packages in the mobile repository:
+The mobile build needs only the environment's non-secret Entra client ID, tenant ID, authority, redirect URI, and API scope. It must never contain the Google secret, Apple Service ID, Apple provider object ID, Team ID, Key ID, `.p8` key, OTPs, authorization codes, or tokens. Use an Expo development or standalone build for callback testing because Expo Go cannot claim the required custom scheme.
 
-```bash
-npx expo install expo-auth-session expo-crypto expo-web-browser expo-secure-store
-```
-
-Add these non-secret development settings:
-
-```dotenv
-EXPO_PUBLIC_ENVIRONMENT=dev
-EXPO_PUBLIC_ENTRA_CLIENT_ID=e8db01a0-3a93-48e0-86fa-68123e026088
-EXPO_PUBLIC_ENTRA_TENANT_ID=d6b05a66-a3b7-442c-b56f-d4d7a9e154ba
-EXPO_PUBLIC_ENTRA_AUTHORITY=https://olgaconnectdev.ciamlogin.com/
-EXPO_PUBLIC_ENTRA_REDIRECT_URI=olga-dev://auth
-EXPO_PUBLIC_OLGA_API_SCOPE=api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user
-```
-
-Register the callback scheme without replacing the mobile project's existing bundle and package identifiers:
-
-```json
-{
-  "expo": {
-    "scheme": "olga-dev",
-    "plugins": ["expo-secure-store"]
-  }
-}
-```
-
-Configure `expo-auth-session` with issuer `https://olgaconnectdev.ciamlogin.com/d6b05a66-a3b7-442c-b56f-d4d7a9e154ba/v2.0`, redirect URI `olga-dev://auth`, PKCE, and scopes `openid`, `profile`, `email`, `offline_access`, and `api://733db389-f55d-4a33-8cd6-18a14393e3d9/access_as_user`. Open the system browser, exchange the returned authorization code with the PKCE verifier and no client secret, then store tokens only in `expo-secure-store`. Use an Expo development or standalone build for callback testing; Expo Go does not claim the registered `olga-dev` scheme.
-
-The existing sign-up/sign-in button may remain unchanged: the Entra-hosted page displays Email OTP and every associated federated provider. Never add `GOOGLE_CLIENT_SECRET`, the Apple `.p8` key, or any other private credential to the mobile source, Expo environment, build configuration, logs, analytics, AsyncStorage, Redux persistence, or SQLite. The complete hook, refresh, sign-out, error-handling, and test examples are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
+The complete runtime values, Expo configuration, `useEntraLogin` hook, provider routing contract, refresh/sign-out behavior, and physical-device verification checklist are maintained in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
 
 Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.

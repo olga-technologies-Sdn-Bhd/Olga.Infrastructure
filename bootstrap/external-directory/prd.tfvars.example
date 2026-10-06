@@ -5,8 +5,8 @@ tenant_primary_domain = "<prd-tenant-subdomain>.onmicrosoft.com"
 tenant_data_location  = "<prd-external-tenant-location>"
 mobile_redirect_uri   = "<prd-mobile-redirect-uri>"
 
-# Non-secret. Use only the object ID returned by bootstrap-google-identity-provider.ps1 for the prd external tenant.
-google_identity_provider_id = "<prd-google-identity-provider-object-id>"
-
-# Uncomment only after bootstrap-apple-identity-provider.ps1 configures the prd tenant.
-# apple_identity_provider_id = "<prd-apple-identity-provider-object-id>"
+# Explicitly override any development auto.tfvars values during the first Email OTP baseline apply.
+# Replace each null only after its matching production provider workflow succeeds so Terraform
+# retains the production association during later directory-root plans.
+google_identity_provider_id = null
+apple_identity_provider_id  = null
