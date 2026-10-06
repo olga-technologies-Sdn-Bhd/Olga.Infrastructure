@@ -8,8 +8,8 @@ locals {
   database_deploy_oidc_subject = "repo:${var.github_organization_subject}/${var.database_github_repository_subject}:environment:${local.github_environment}"
   core_delivery_enabled        = var.use_acr_images || var.core_application_delivery_enabled
   nlp_delivery_enabled         = var.use_acr_images || var.nlp_application_delivery_enabled
-  core_api_min_replicas        = var.core_api_min_replicas != null ? var.core_api_min_replicas : (var.environment == "prod" ? 1 : 0)
-  nlp_api_min_replicas         = var.nlp_api_min_replicas != null ? var.nlp_api_min_replicas : (var.environment == "prod" ? 1 : 0)
+  core_api_min_replicas        = var.core_api_min_replicas != null ? var.core_api_min_replicas : (var.environment == "prod" ? 2 : 0)
+  nlp_api_min_replicas         = var.nlp_api_min_replicas != null ? var.nlp_api_min_replicas : (var.environment == "prod" ? 2 : 0)
   postgres_access              = try(var.postgres_access_by_environment[var.environment], null)
   platform_administrator_principal_ids = try(
     var.platform_administrator_principal_ids_by_environment[var.environment],

@@ -24,9 +24,17 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_password        = var.postgres_admin_password
   sku_name                      = var.postgres_sku_name
   storage_mb                    = var.postgres_storage_mb
-  backup_retention_days         = 7
-  geo_redundant_backup_enabled  = false
+  backup_retention_days         = var.environment == "prod" ? 35 : 7
+  geo_redundant_backup_enabled  = var.environment == "prod"
+  auto_grow_enabled             = var.environment == "prod" ? true : null
   tags                          = var.tags
+
+  dynamic "high_availability" {
+    for_each = var.environment == "prod" ? [1] : []
+    content {
+      mode = "ZoneRedundant"
+    }
+  }
 
   authentication {
     active_directory_auth_enabled = var.postgres_entra_admin != null
@@ -217,7 +225,7 @@ resource "azurerm_storage_account" "this" {
   resource_group_name             = var.resource_group_name
   location                        = var.location
   account_tier                    = "Standard"
-  account_replication_type        = "LRS"
+  account_replication_type        = var.environment == "prod" ? "ZRS" : "LRS"
   min_tls_version                 = "TLS1_2"
   public_network_access_enabled   = false
   allow_nested_items_to_be_public = false

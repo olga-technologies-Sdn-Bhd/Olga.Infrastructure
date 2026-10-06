@@ -126,8 +126,8 @@ module "data" {
   postgres_admin_username                  = var.postgres_admin_username
   postgres_admin_password                  = module.foundation.postgres_admin_password
   postgres_connection_string_override      = var.environment == "dev" ? var.postgres_connection_string_override : null
-  postgres_sku_name                        = var.postgres_sku_name
-  postgres_storage_mb                      = var.postgres_storage_mb
+  postgres_sku_name                        = var.environment == "prod" ? var.postgres_prod_sku_name : var.postgres_sku_name
+  postgres_storage_mb                      = var.environment == "prod" ? var.postgres_prod_storage_mb : var.postgres_storage_mb
   postgres_allowed_extensions              = var.postgres_allowed_extensions
   postgres_entra_admin                     = try(local.postgres_access.entra_admin, null)
   postgres_firewall_rules                  = try(local.postgres_access.firewall_rules, {})
@@ -193,4 +193,172 @@ module "platform" {
   enable_content_safety                    = var.enable_content_safety
   enable_signalr                           = var.enable_signalr
   enable_notification_hubs                 = var.enable_notification_hubs
+}
+
+resource "azurerm_monitor_action_group" "production" {
+  count = var.environment == "prod" ? 1 : 0
+
+  name                = "ag-olga-prod"
+  resource_group_name = module.foundation.resource_group_name
+  short_name          = "olga-prod"
+  tags                = local.tags
+
+  dynamic "email_receiver" {
+    for_each = { for index, address in var.budget_alert_emails : tostring(index) => address }
+    content {
+      name                    = "production-${email_receiver.key}"
+      email_address           = email_receiver.value
+      use_common_alert_schema = true
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = length(var.budget_alert_emails) > 0
+      error_message = "Production requires at least one budget_alert_emails recipient for operational alerts."
+    }
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "postgres_capacity" {
+  for_each = var.environment == "prod" ? {
+    cpu = {
+      metric_name = "cpu_percent"
+      threshold   = 80
+    }
+    memory = {
+      metric_name = "memory_percent"
+      threshold   = 80
+    }
+    storage = {
+      metric_name = "storage_percent"
+      threshold   = 80
+    }
+  } : {}
+
+  name                = "alert-olga-prod-postgres-${each.key}"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [module.data.postgres_server_id]
+  description         = "Production PostgreSQL ${each.key} utilization is above 80 percent."
+  severity            = 1
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.DBforPostgreSQL/flexibleServers"
+    metric_name      = each.value.metric_name
+    aggregation      = "Average"
+    operator         = "GreaterThan"
+    threshold        = each.value.threshold
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "container_memory" {
+  for_each = var.environment == "prod" ? {
+    core = {
+      scope     = module.platform.core_api_id
+      threshold = 858993459
+    }
+    nlp = {
+      scope     = module.platform.nlp_api_id
+      threshold = 1717986918
+    }
+    worker = {
+      scope     = module.platform.nlp_worker_id
+      threshold = 1717986918
+    }
+  } : {}
+
+  name                = "alert-olga-prod-${each.key}-memory"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [each.value.scope]
+  description         = "Production ${each.key} container memory working set is above 80 percent of its configured limit."
+  severity            = 1
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "WorkingSetBytes"
+    aggregation      = "Average"
+    operator         = "GreaterThan"
+    threshold        = each.value.threshold
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "container_cpu" {
+  for_each = var.environment == "prod" ? {
+    core = {
+      scope     = module.platform.core_api_id
+      threshold = 400000000
+    }
+    nlp = {
+      scope     = module.platform.nlp_api_id
+      threshold = 800000000
+    }
+    worker = {
+      scope     = module.platform.nlp_worker_id
+      threshold = 800000000
+    }
+  } : {}
+
+  name                = "alert-olga-prod-${each.key}-cpu"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [each.value.scope]
+  description         = "Production ${each.key} container CPU usage is above 80 percent of one replica's configured limit."
+  severity            = 1
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "UsageNanoCores"
+    aggregation      = "Average"
+    operator         = "GreaterThan"
+    threshold        = each.value.threshold
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "container_replicas" {
+  for_each = var.environment == "prod" ? {
+    core   = module.platform.core_api_id
+    nlp    = module.platform.nlp_api_id
+    worker = module.platform.nlp_worker_id
+  } : {}
+
+  name                = "alert-olga-prod-${each.key}-replicas"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [each.value]
+  description         = "Production ${each.key} has fewer than two active replicas."
+  severity            = 0
+  frequency           = "PT1M"
+  window_size         = "PT5M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.App/containerApps"
+    metric_name      = "Replicas"
+    aggregation      = "Average"
+    operator         = "LessThan"
+    threshold        = 2
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
 }

@@ -9,8 +9,8 @@ resource "azurerm_log_analytics_workspace" "this" {
   location            = azurerm_resource_group.this.location
   resource_group_name = azurerm_resource_group.this.name
   sku                 = "PerGB2018"
-  retention_in_days   = 30
-  daily_quota_gb      = 0.1
+  retention_in_days   = var.environment == "prod" ? 90 : 30
+  daily_quota_gb      = var.environment == "prod" ? 5 : 0.1
   tags                = var.tags
 }
 
@@ -20,18 +20,19 @@ resource "azurerm_application_insights" "this" {
   resource_group_name  = azurerm_resource_group.this.name
   workspace_id         = azurerm_log_analytics_workspace.this.id
   application_type     = "web"
-  daily_data_cap_in_gb = 0.1
-  sampling_percentage  = 20
+  daily_data_cap_in_gb = var.environment == "prod" ? 5 : 0.1
+  sampling_percentage  = var.environment == "prod" ? 100 : 20
   tags                 = var.tags
 }
 
 resource "azurerm_container_registry" "this" {
-  name                = "acrolga${var.suffix}"
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
-  sku                 = "Basic"
-  admin_enabled       = false
-  tags                = var.tags
+  name                    = "acrolga${var.suffix}"
+  resource_group_name     = azurerm_resource_group.this.name
+  location                = azurerm_resource_group.this.location
+  sku                     = var.environment == "prod" ? "Premium" : "Basic"
+  admin_enabled           = false
+  zone_redundancy_enabled = var.environment == "prod" ? true : null
+  tags                    = var.tags
 }
 
 resource "azurerm_user_assigned_identity" "core" {

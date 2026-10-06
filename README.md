@@ -68,7 +68,9 @@ The infrastructure apply creates one deployment identity per repository and trus
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
 
-When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `1` to keep both APIs warm. Explicit environment values override these defaults.
+When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `2` for availability during replica failure or maintenance. In production, Core scales from 2 to 5 replicas at 50 concurrent requests per replica with 0.5 vCPU/1 GiB each; NLP scales from 2 to 5 at 25 concurrent requests per replica with 1 vCPU/2 GiB each. The production NLP worker runs two 1-vCPU/2-GiB replicas. Development retains its original replica counts and 0.25-vCPU/0.5-GiB allocations.
+
+Production also uses a zone-redundant Container Apps environment, Premium zone-redundant ACR, ZRS Blob Storage, and PostgreSQL General Purpose compute with zone-redundant high availability, 128 GiB storage, automatic storage growth, 35-day retention, and geo-redundant backup. Production telemetry retains 90 days, has a 5-GB daily cap with full sampling, and alerts the configured `BUDGET_ALERT_EMAILS` recipients for replica loss, container CPU/memory pressure, and PostgreSQL CPU/memory/storage pressure. Confirm SKU, availability-zone, and geo-backup support in the selected Azure region during the reviewed production plan.
 
 The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
 

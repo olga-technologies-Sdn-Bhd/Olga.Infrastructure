@@ -1,4 +1,5 @@
 output "postgres_server_fqdn" { value = azurerm_postgresql_flexible_server.this.fqdn }
+output "postgres_server_id" { value = azurerm_postgresql_flexible_server.this.id }
 output "postgres_database_name" { value = azurerm_postgresql_flexible_server_database.this.name }
 output "key_vault_id" { value = azurerm_key_vault.this.id }
 output "key_vault_uri" { value = azurerm_key_vault.this.vault_uri }
