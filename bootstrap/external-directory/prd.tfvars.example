@@ -5,8 +5,8 @@ tenant_primary_domain = "<prd-tenant-subdomain>.onmicrosoft.com"
 tenant_data_location  = "<prd-external-tenant-location>"
 mobile_redirect_uri   = "<prd-mobile-redirect-uri>"
 
-# Leave both provider IDs unset for the first Email OTP baseline apply. After each provider workflow succeeds,
-# uncomment its matching non-secret ID before any later plan so Terraform retains every association.
-# google_identity_provider_id = "<prd-google-identity-provider-object-id>"
-
-# apple_identity_provider_id = "<prd-apple-identity-provider-object-id>"
+# Explicitly override any development auto.tfvars values during the first Email OTP baseline apply.
+# Replace each null only after its matching production provider workflow succeeds so Terraform
+# retains the production association during later directory-root plans.
+google_identity_provider_id = null
+apple_identity_provider_id  = null
