@@ -4,7 +4,7 @@ resource "azurerm_container_app_environment" "this" {
   resource_group_name        = var.resource_group_name
   infrastructure_subnet_id   = var.container_apps_subnet_id
   log_analytics_workspace_id = var.log_analytics_workspace_id
-  zone_redundancy_enabled     = var.environment == "prod" ? true : null
+  zone_redundancy_enabled    = var.environment == "prod" ? true : null
   tags                       = var.tags
 
   workload_profile {
