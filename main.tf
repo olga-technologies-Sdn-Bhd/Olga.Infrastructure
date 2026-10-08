@@ -128,6 +128,7 @@ module "data" {
   postgres_connection_string_override      = var.environment == "dev" ? var.postgres_connection_string_override : null
   postgres_sku_name                        = var.environment == "prod" ? var.postgres_prod_sku_name : var.postgres_sku_name
   postgres_storage_mb                      = var.environment == "prod" ? var.postgres_prod_storage_mb : var.postgres_storage_mb
+  postgres_geo_redundant_backup_enabled    = var.environment == "prod" && var.postgres_prod_geo_redundant_backup_enabled
   postgres_allowed_extensions              = var.postgres_allowed_extensions
   postgres_entra_admin                     = try(local.postgres_access.entra_admin, null)
   postgres_firewall_rules                  = try(local.postgres_access.firewall_rules, {})

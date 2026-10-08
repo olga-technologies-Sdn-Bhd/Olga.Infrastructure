@@ -17,6 +17,7 @@ variable "postgres_connection_string_override" {
 }
 variable "postgres_sku_name" { type = string }
 variable "postgres_storage_mb" { type = number }
+variable "postgres_geo_redundant_backup_enabled" { type = bool }
 variable "postgres_allowed_extensions" { type = list(string) }
 variable "postgres_entra_admin" {
   type = object({
