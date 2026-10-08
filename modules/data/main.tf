@@ -25,7 +25,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   sku_name                      = var.postgres_sku_name
   storage_mb                    = var.postgres_storage_mb
   backup_retention_days         = var.environment == "prod" ? 35 : 7
-  geo_redundant_backup_enabled  = var.environment == "prod"
+  geo_redundant_backup_enabled  = var.postgres_geo_redundant_backup_enabled
   auto_grow_enabled             = var.environment == "prod" ? true : null
   tags                          = var.tags
 

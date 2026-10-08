@@ -16,7 +16,8 @@ nlp_worker_application_delivery_enabled = true
 core_api_min_replicas                   = 2
 nlp_api_min_replicas                    = 2
 
-postgres_prod_sku_name   = "GP_Standard_D2ds_v5"
-postgres_prod_storage_mb = 131072
+postgres_prod_sku_name                     = "GP_Standard_D2ds_v5"
+postgres_prod_storage_mb                   = 131072
+postgres_prod_geo_redundant_backup_enabled = false
 
 enable_service_bus = false

@@ -122,6 +122,12 @@ variable "postgres_prod_storage_mb" {
   }
 }
 
+variable "postgres_prod_geo_redundant_backup_enabled" {
+  description = "Enable geo-redundant PostgreSQL backups in production only when the selected Azure region supports them. Malaysia West does not currently support this capability."
+  type        = bool
+  default     = false
+}
+
 variable "postgres_allowed_extensions" {
   description = "PostgreSQL extensions allowlisted through the azure.extensions server parameter."
   type        = list(string)
