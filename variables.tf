@@ -336,8 +336,8 @@ variable "apim_publisher_email" {
 
 variable "enable_admin_static_web_app" {
   description = "Provision the Azure Static Web App that hosts the admin portal SPA."
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 variable "admin_static_web_app_location" {
