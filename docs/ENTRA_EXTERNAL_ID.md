@@ -74,16 +74,16 @@ Google Cloud setup is intentionally outside Terraform because putting the Google
 
 ### 3. Establish GitHub OIDC and store the Google credential
 
-Create one single-tenant application registration in each external tenant for `.github/workflows/external-directory-configure.yml`. Add one federated identity credential with issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, and the exact matching subject:
+Create one single-tenant application registration in each external tenant for External ID automation. Add a federated identity credential with issuer `https://token.actions.githubusercontent.com`, audience `api://AzureADTokenExchange`, and the exact matching protected-environment subject:
 
 ```text
 dev: repo:Ol-gaTechnologies/Olga.Infrastructure:environment:dev
 prd: repo:Ol-gaTechnologies/Olga.Infrastructure:environment:prd
 ```
 
-Grant the application the five Microsoft Graph **application** permissions listed under Required operator roles and grant tenant-wide admin consent. Do not create a client secret or certificate for this deployment identity. Record its application client ID as `EXTERNAL_DIRECTORY_CLIENT_ID` in the matching GitHub Environment.
+Grant the application the five Microsoft Graph **application** permissions listed under Required operator roles and grant tenant-wide admin consent. Do not create a client secret or certificate for this deployment identity. Record its application client ID as `EXTERNAL_DIRECTORY_CLIENT_ID` in the matching `dev` or `prd` GitHub Environment.
 
-Configure these additional values independently in GitHub Environments `dev` and `prd`:
+Configure these values once in the matching `dev` or `prd` GitHub Environment:
 
 | Name | GitHub type | Value |
 | --- | --- | --- |
@@ -92,12 +92,13 @@ Configure these additional values independently in GitHub Environments `dev` and
 | `EXTERNAL_TENANT_SUBDOMAIN` | Variable | Matching subdomain without `.onmicrosoft.com` |
 | `EXTERNAL_TENANT_DATA_LOCATION` | Variable | Tenant creation location |
 | `MOBILE_REDIRECT_URI` | Variable | Exact environment-specific native callback |
+| `APPLE_IDENTITY_PROVIDER_ID` | Variable | Matching non-secret Apple provider object ID; retained by the directory apply |
 | `GOOGLE_CLIENT_ID` | Variable | Matching Google OAuth Web client ID |
 | `GOOGLE_CLIENT_SECRET` | Secret | Matching Google OAuth Web client secret |
 
 The existing management-tenant variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TFSTATE_RESOURCE_GROUP`, `TFSTATE_STORAGE_ACCOUNT`, and `TFSTATE_CONTAINER` remain responsible only for the remote-state backend. The external-directory application authenticates separately to Microsoft Graph through OIDC. Never copy any dev variable, secret, provider ID, federated credential, or callback into prd.
 
-The workflow exposes `GOOGLE_CLIENT_SECRET` only to the PowerShell bootstrap step. The script verifies the token tenant, required Graph application roles, tenant verified domain, and environment naming before changing anything; suppresses Graph response bodies on errors; creates or updates exactly one Google provider; associates its object ID with the existing user flow; verifies every previous association remains; and emits only the non-secret object ID. It does not run Terraform. The secret never enters Terraform configuration, plans, outputs, or state.
+The workflow exposes `GOOGLE_CLIENT_SECRET` only to the PowerShell bootstrap step. The script verifies the token tenant, required Graph application roles, tenant verified domain, and environment naming before changing anything; suppresses Graph response bodies on errors; and creates or updates exactly one Google provider. The same protected job then plans and applies the directory root, retaining Email OTP and the configured Apple provider. The Google secret never enters Terraform configuration, plans, outputs, or state.
 
 ### 4. Create the directory baseline, then add providers
 
@@ -108,13 +109,14 @@ Apply `bootstrap/external-directory` first, with both provider-ID variables omit
 - `olga_mobile_<environment>` as a single-tenant public-client registration and service principal, with public-client flows and the native authentication APIs enabled;
 - the exact environment-specific native redirect URI;
 - the matching API permission, API preauthorization, and tenant-wide delegated permission grant;
-- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, optional Google and Apple associations from their non-secret provider IDs, the hidden verified email attribute, an optional visible display-name field, and only the matching mobile application association.
+- statically declared `openid` and `offline_access` Microsoft Graph permissions with tenant-wide admin consent, plus API preauthorization, so external-tenant customers are not asked to consent individually. The client still requests the `profile` and `email` OpenID Connect protocol scopes at runtime; External ID does not expose those two as configurable API permissions;
+- `olga_signup_signin_<environment>` with self-service sign-up, `EmailOtpSignup-OAUTH`, optional Google and Apple associations from their non-secret provider IDs, only the hidden verified email attribute, and only the matching mobile application association. The flow does not ask for display name or mobile number because the OLGA application collects them separately.
 
 The registrations and flow are protected with `prevent_destroy`. Terraform creates no client secret or certificate. The caller must have permission to manage applications, grant tenant-wide consent, and manage authentication events flows in the external tenant. Terraform enables **Allow public client flows** (`isFallbackPublicClient`) and **Enable native authentication** (`nativeAuthenticationApisEnabled`). Verify both settings on the deployed `olga_mobile_<environment>` registration after the directory apply. These settings permit native authentication but do not change the client implementation: the current React Native/Expo implementation remains browser-delegated Authorization Code with PKCE until the mobile repository adopts Microsoft's native authentication SDK or API for Email OTP. Google and Apple remain browser-delegated. Do not treat the native-authentication `registration_required` capability as an automatic sign-in-to-sign-up transition; Microsoft documents it for strong-authentication-method registration. Do not configure Twilio, Auth0, SendGrid, Azure Communication Services, or an OLGA OTP service. Microsoft manages Email OTP generation, delivery, verification, expiration, throttling/retries, and account creation. Do not add JWT middleware or endpoint authorization to Core or NLP in this task.
 
-After the baseline exists, run **External ID - Configure Google Provider**. It creates or rotates Google and associates it directly with the existing user flow without changing Terraform-managed applications or native-authentication settings. Record the returned Google provider ID in the matching ignored `bootstrap/external-directory/<environment>.auto.tfvars` file before any future directory-root plan.
+After the baseline exists, run **External ID - Configure Directory and Google Provider**. It creates or rotates Google, passes the returned non-secret provider ID directly to the saved Terraform plan, and applies the requested application, consent, native-authentication, and user-flow updates.
 
-Run **External ID - Configure Apple Provider** independently when Apple is ready, then record its returned provider ID in the same ignored file. On later directory-root plans, `google_identity_provider_id` and `apple_identity_provider_id` make Terraform retain those associations alongside `EmailOtpSignup-OAUTH`. Provider creation and credential rotation are not performed by Terraform. Never run a directory-root plan with a configured provider ID omitted; doing so can remove that provider from Terraform's desired user-flow association list.
+Run **External ID - Configure Apple Provider** independently when Apple is ready, then store its returned provider ID as `APPLE_IDENTITY_PROVIDER_ID` in the matching protected GitHub Environment. The directory workflow requires that value so its plan retains Apple alongside Google and `EmailOtpSignup-OAUTH`. Provider credentials remain outside Terraform.
 
 At runtime request `openid profile email offline_access api://<api-client-id>/access_as_user`. The OpenID scopes are protocol scopes requested by the client. PKCE is performed by the mobile authentication library during the authorization-code exchange.
 
@@ -247,7 +249,7 @@ terraform -chdir=bootstrap/external-directory apply -input=false -lock-timeout=1
 terraform -chdir=bootstrap/external-directory output -raw external_identity_json
 ```
 
-Run the directory commands with a delegated CLI session authorized in the external tenant and access to the management-tenant state backend. The initial example leaves both provider IDs unset and creates the Email OTP user flow required by the provider workflows. Copy the `external_identity_json` output to the `EXTERNAL_IDENTITY` variable in the matching plan/apply GitHub Environments. Then dispatch the Google provider workflow from the matching reviewed branch:
+Run the initial directory commands with a delegated CLI session authorized in the external tenant and access to the management-tenant state backend. This one-time bootstrap leaves both provider IDs unset and creates the Email OTP user flow and deployment identity required by later GitHub Actions runs. Copy the `external_identity_json` output to the `EXTERNAL_IDENTITY` variable in the matching plan/apply GitHub Environments. Then dispatch the Google provider workflow from the matching reviewed branch:
 
 ```powershell
 gh workflow run external-directory-configure.yml `
@@ -256,9 +258,9 @@ gh workflow run external-directory-configure.yml `
   -f 'confirmation=APPLY olga-external-directory-dev'
 ```
 
-The workflow signs in to the dev external tenant with OIDC, creates or rotates Google, associates it with the existing user flow, verifies Email OTP and every prior association remain, and publishes only the non-secret provider ID. It creates, updates, replaces, or deletes no Terraform resource.
+The workflow signs in to the dev external tenant with OIDC, creates or rotates Google, creates a saved directory plan, refuses any delete or replacement, and applies that plan from the same protected `dev` job. This is the ongoing deployment path for directory changes; the main infrastructure workflow remains separate.
 
-Record the returned ID as `google_identity_provider_id` in the ignored `bootstrap/external-directory/dev.auto.tfvars`. After Apple is configured, record its ID as `apple_identity_provider_id` in the same file. Open `olga_signup_signin_dev` and verify Email OTP, Google, and Apple are selected. To rotate Google later, update only the protected `GOOGLE_CLIENT_SECRET` value in `dev` and rerun the Google workflow; the script updates the provider in place and preserves the user flow and application registrations.
+After Apple is configured, record its returned ID as `APPLE_IDENTITY_PROVIDER_ID` in `dev` and as `apple_identity_provider_id` in the ignored `bootstrap/external-directory/dev.auto.tfvars` for local fallback. The Google provider ID is passed directly from the bootstrap step into the directory plan, so it does not need a second GitHub variable. Open `olga_signup_signin_dev` and verify Email OTP, Google, and Apple are selected. To rotate Google or apply later directory changes, rerun this same workflow.
 
 For optional local main-stack planning, place the same values in the ignored `environments/dev.external-identity.tfvars` file:
 
@@ -297,13 +299,13 @@ terraform plan -input=false -lock-timeout=5m -var-file=environments/prd.external
 terraform apply -input=false -lock-timeout=10m prd.tfplan
 ```
 
-Copy the prd `external_identity_json` output only to the `prd-plan` and `prd` GitHub Environments. Record the Google and Apple provider IDs in the ignored `bootstrap/external-directory/prd.auto.tfvars` before any later directory-root plan, and complete the separate Apple runbook before releasing the production mobile build.
+Copy the prd `external_identity_json` output only to the `prd-plan` and `prd` GitHub Environments for the main infrastructure workflow. Record `APPLE_IDENTITY_PROVIDER_ID` in `prd`, retain it in the ignored `bootstrap/external-directory/prd.auto.tfvars` for local fallback, and complete the separate Apple runbook before releasing the production mobile build.
 
-The preferred main-stack deployment path is the protected GitHub workflow after configuring the matching GitHub Environment variables. Dev may run automatically from `develop`; prd is manual-only and must be dispatched from the reviewed `main` ref:
+The main stack continues through **Terraform - Validate, Plan, Apply**. External ID directory changes use **External ID - Configure Directory and Google Provider** from the reviewed branch:
 
 ```powershell
-gh workflow run terraform-validate-plan-apply.yml --ref develop -f environment=dev
-gh workflow run terraform-validate-plan-apply.yml --ref main -f environment=prd
+gh workflow run external-directory-configure.yml --ref develop -f environment=dev -f 'confirmation=APPLY olga-external-directory-dev'
+gh workflow run external-directory-configure.yml --ref main -f environment=prd -f 'confirmation=APPLY olga-external-directory-prd'
 ```
 
-The workflow generates a fresh saved plan, applies only that plan, and requires the configured production approval. Never reuse a plan across environments.
+The workflow generates and applies a fresh saved plan for `bootstrap/external-directory` and requires the configured production approval. Never reuse a plan across environments.

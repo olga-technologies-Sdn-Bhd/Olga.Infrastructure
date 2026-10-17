@@ -330,7 +330,7 @@ Before testing, open **olga_mobile_dev** > **Authentication** and confirm **Allo
 3. Confirm the browser host is exactly `olgaconnectdev.ciamlogin.com`.
 4. Create a customer with an email address not previously used in this dev tenant.
 5. Confirm Microsoft delivers the OTP and that OLGA never sees or logs it.
-6. Complete the hosted form and confirm the browser returns to the mobile app instead of remaining on the `createuser` page.
+6. Confirm no additional profile fields are requested and the browser returns to the mobile app instead of remaining on the `createuser` page.
 7. Confirm an access token and refresh token were obtained without exposing their values in logs.
 8. Decode tokens only in a safe local diagnostic tool and verify the tenant/issuer is the dev External ID tenant and the access-token audience is the dev API registration. Do not paste real tokens into tickets or shared websites.
 9. Close and reopen the app; confirm the session restores from secure storage.

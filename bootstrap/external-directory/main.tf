@@ -1,4 +1,10 @@
 data "azuread_client_config" "current" {}
+data "azuread_application_published_app_ids" "well_known" {}
+
+resource "azuread_service_principal" "microsoft_graph" {
+  client_id    = data.azuread_application_published_app_ids.well_known.result.MicrosoftGraph
+  use_existing = true
+}
 
 locals {
   api_display_name    = "olga_api_${var.environment}"
@@ -78,6 +84,15 @@ resource "azuread_application_api_access" "mobile_api" {
   scope_ids      = [azuread_application_permission_scope.access_as_user.scope_id]
 }
 
+resource "azuread_application_api_access" "mobile_openid" {
+  application_id = azuread_application_registration.mobile.id
+  api_client_id  = data.azuread_application_published_app_ids.well_known.result.MicrosoftGraph
+  scope_ids = [
+    azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["openid"],
+    azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["offline_access"],
+  ]
+}
+
 removed {
   from = azuread_application_fallback_public_client.mobile
 
@@ -97,6 +112,7 @@ resource "msgraph_update_resource" "mobile_public_client" {
   depends_on = [
     azuread_application_redirect_uris.mobile,
     azuread_application_api_access.mobile_api,
+    azuread_application_api_access.mobile_openid,
   ]
 }
 
@@ -127,6 +143,12 @@ resource "azuread_service_principal_delegated_permission_grant" "mobile_api" {
   service_principal_object_id          = azuread_service_principal.mobile.object_id
   resource_service_principal_object_id = azuread_service_principal.api.object_id
   claim_values                         = [azuread_application_permission_scope.access_as_user.value]
+}
+
+resource "azuread_service_principal_delegated_permission_grant" "mobile_openid" {
+  service_principal_object_id          = azuread_service_principal.mobile.object_id
+  resource_service_principal_object_id = azuread_service_principal.microsoft_graph.object_id
+  claim_values                         = ["openid", "offline_access"]
 }
 
 resource "msgraph_resource" "signup_signin_user_flow" {
@@ -163,13 +185,6 @@ resource "msgraph_resource" "signup_signin_user_flow" {
           description           = "Email address of the user"
           userFlowAttributeType = "builtIn"
           dataType              = "string"
-        },
-        {
-          id                    = "displayName"
-          displayName           = "Display Name"
-          description           = var.environment == "prd" ? "Display Name of the User." : "Display name of the user"
-          userFlowAttributeType = "builtIn"
-          dataType              = "string"
         }
       ]
       attributeCollectionPage = {
@@ -185,16 +200,6 @@ resource "msgraph_resource" "signup_signin_user_flow" {
                 writeToDirectory = true
                 required         = true
                 validationRegEx  = "^.+@.+\\..+$"
-              },
-              {
-                attribute        = "displayName"
-                label            = "Display Name"
-                inputType        = "text"
-                hidden           = false
-                editable         = true
-                writeToDirectory = true
-                required         = false
-                validationRegEx  = "^[a-zA-Z_][0-9a-zA-Z_ ]*[0-9a-zA-Z_]+$"
               }
             ]
           }

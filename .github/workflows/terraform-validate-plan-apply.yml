@@ -104,6 +104,8 @@ jobs:
           echo "$RUNNER_TEMP/tflint" >> "$GITHUB_PATH"
 
       - name: Run TFLint
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint --init
           tflint --recursive --format compact
