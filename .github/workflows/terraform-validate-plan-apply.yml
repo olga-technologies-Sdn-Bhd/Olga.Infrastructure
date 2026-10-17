@@ -159,6 +159,9 @@ jobs:
       TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
       TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
       TF_VAR_external_identity: ${{ vars.EXTERNAL_IDENTITY }}
+      TF_VAR_enable_admin_static_web_app: "true"
+      TF_VAR_admin_static_web_app_location: eastasia
+      TF_VAR_admin_static_web_app_sku_tier: ${{ needs.quality.outputs.environment == 'prd' && 'Standard' || 'Free' }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
     steps:

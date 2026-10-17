@@ -199,6 +199,10 @@ resource "azurerm_container_app" "core_api" {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = var.application_insights_connection_string
       }
+      env {
+        name  = "Diagnostics__IncludeExceptionDetails"
+        value = var.environment == "prod" ? "false" : "true"
+      }
 
       dynamic "liveness_probe" {
         for_each = var.core_health_probes_enabled ? [1] : []
@@ -349,6 +353,10 @@ resource "azurerm_container_app" "nlp_api" {
       env {
         name  = "APPLICATIONINSIGHTS_CONNECTION_STRING"
         value = var.application_insights_connection_string
+      }
+      env {
+        name  = "Diagnostics__IncludeExceptionDetails"
+        value = var.environment == "prod" ? "false" : "true"
       }
 
       dynamic "liveness_probe" {
