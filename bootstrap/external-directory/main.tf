@@ -89,8 +89,6 @@ resource "azuread_application_api_access" "mobile_openid" {
   api_client_id  = data.azuread_application_published_app_ids.well_known.result.MicrosoftGraph
   scope_ids = [
     azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["openid"],
-    azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["profile"],
-    azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["email"],
     azuread_service_principal.microsoft_graph.oauth2_permission_scope_ids["offline_access"],
   ]
 }
@@ -150,7 +148,7 @@ resource "azuread_service_principal_delegated_permission_grant" "mobile_api" {
 resource "azuread_service_principal_delegated_permission_grant" "mobile_openid" {
   service_principal_object_id          = azuread_service_principal.mobile.object_id
   resource_service_principal_object_id = azuread_service_principal.microsoft_graph.object_id
-  claim_values                         = ["openid", "profile", "email", "offline_access"]
+  claim_values                         = ["openid", "offline_access"]
 }
 
 resource "msgraph_resource" "signup_signin_user_flow" {
