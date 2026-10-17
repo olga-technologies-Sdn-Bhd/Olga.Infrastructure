@@ -203,6 +203,13 @@ resource "azurerm_container_app" "core_api" {
         name  = "Diagnostics__IncludeExceptionDetails"
         value = var.environment == "prod" ? "false" : "true"
       }
+      dynamic "env" {
+        for_each = var.enable_admin_static_web_app ? [1] : []
+        content {
+          name  = "Cors__AdminOrigins__0"
+          value = "https://${azurerm_static_web_app.admin[0].default_host_name}"
+        }
+      }
 
       dynamic "liveness_probe" {
         for_each = var.core_health_probes_enabled ? [1] : []
