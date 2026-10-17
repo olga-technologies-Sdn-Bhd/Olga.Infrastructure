@@ -124,6 +124,5 @@ jobs:
             echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
             echo "- Every existing identity-provider association was retained."
             echo "- Apple provider \`$APPLE_PROVIDER_ID\` is associated with the existing user flow."
-            echo "- Keep \`APPLE_IDENTITY_PROVIDER_ID\` in this GitHub Environment set to \`$APPLE_PROVIDER_ID\` before running the directory workflow."
             echo "- No Terraform resources were created, updated, replaced, or deleted."
           } >> "$GITHUB_STEP_SUMMARY"
