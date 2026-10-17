@@ -74,7 +74,7 @@ Production also uses a zone-redundant Container Apps environment, Premium zone-r
 
 The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
 
-The API URL outputs remain available with:
+The API URL outputs use each Container App's stable ingress hostname rather than a revision-specific hostname, so application releases do not change the published URL. They remain available with:
 
 ```powershell
 terraform output -raw core_swagger_url

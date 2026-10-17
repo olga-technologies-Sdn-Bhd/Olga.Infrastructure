@@ -1,8 +1,8 @@
-output "core_api_url" { value = "https://${azurerm_container_app.core_api.latest_revision_fqdn}" }
-output "core_swagger_url" { value = "https://${azurerm_container_app.core_api.latest_revision_fqdn}/swagger/index.html" }
-output "nlp_api_url" { value = "https://${azurerm_container_app.nlp_api.latest_revision_fqdn}" }
-output "nlp_swagger_url" { value = "https://${azurerm_container_app.nlp_api.latest_revision_fqdn}/swagger/index.html" }
-output "nlp_api_fqdn" { value = azurerm_container_app.nlp_api.latest_revision_fqdn }
+output "core_api_url" { value = "https://${azurerm_container_app.core_api.ingress[0].fqdn}" }
+output "core_swagger_url" { value = "https://${azurerm_container_app.core_api.ingress[0].fqdn}/swagger/index.html" }
+output "nlp_api_url" { value = "https://${azurerm_container_app.nlp_api.ingress[0].fqdn}" }
+output "nlp_swagger_url" { value = "https://${azurerm_container_app.nlp_api.ingress[0].fqdn}/swagger/index.html" }
+output "nlp_api_fqdn" { value = azurerm_container_app.nlp_api.ingress[0].fqdn }
 output "nlp_worker_container_app_name" { value = azurerm_container_app.nlp_worker.name }
 output "nlp_worker_identity_client_id" { value = var.worker_identity_client_id }
 output "container_apps_environment_id" { value = azurerm_container_app_environment.this.id }

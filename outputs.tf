@@ -7,7 +7,8 @@ output "container_registry" {
 }
 
 output "core_api_url" {
-  value = module.platform.core_api_url
+  description = "Stable HTTPS ingress URL for the Core API."
+  value       = module.platform.core_api_url
 }
 
 output "core_swagger_url" {
@@ -16,7 +17,8 @@ output "core_swagger_url" {
 }
 
 output "nlp_api_url" {
-  value = module.platform.nlp_api_url
+  description = "Stable HTTPS ingress URL for the NLP API."
+  value       = module.platform.nlp_api_url
 }
 
 output "nlp_swagger_url" {
@@ -25,7 +27,8 @@ output "nlp_swagger_url" {
 }
 
 output "nlp_api_fqdn" {
-  value = module.platform.nlp_api_fqdn
+  description = "Stable ingress FQDN for the NLP API."
+  value       = module.platform.nlp_api_fqdn
 }
 
 output "nlp_worker_container_app_name" {
