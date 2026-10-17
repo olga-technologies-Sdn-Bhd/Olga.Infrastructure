@@ -161,17 +161,8 @@ jobs:
       TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
       TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
       TF_VAR_external_identity: ${{ vars.EXTERNAL_IDENTITY }}
-      TF_VAR_external_tenant_id: ${{ vars.EXTERNAL_TENANT_ID }}
-      TF_VAR_external_directory_client_id: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
-      TF_VAR_use_oidc: "true"
-      TF_VAR_tenant_subdomain: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
-      TF_VAR_tenant_data_location: ${{ vars.EXTERNAL_TENANT_DATA_LOCATION }}
-      TF_VAR_mobile_redirect_uri: ${{ vars.MOBILE_REDIRECT_URI }}
-      TF_VAR_google_identity_provider_id: ${{ vars.GOOGLE_IDENTITY_PROVIDER_ID }}
-      TF_VAR_apple_identity_provider_id: ${{ vars.APPLE_IDENTITY_PROVIDER_ID }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
-      external_directory_has_changes: ${{ steps.external_directory_plan.outputs.has_changes }}
     steps:
       - name: Check out source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -191,17 +182,12 @@ jobs:
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
             TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
             TF_VAR_tenant_id TF_VAR_location TF_VAR_owner TF_VAR_cost_center TF_VAR_expiry_date \
-            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity \
-            TF_VAR_external_tenant_id TF_VAR_external_directory_client_id \
-            TF_VAR_tenant_subdomain TF_VAR_tenant_data_location TF_VAR_mobile_redirect_uri \
-            TF_VAR_google_identity_provider_id TF_VAR_apple_identity_provider_id; do
+            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required plan environment variable $name is not configured."
               exit 1
             fi
           done
-          echo "TF_VAR_tenant_primary_domain=${TF_VAR_tenant_subdomain}.onmicrosoft.com" >> "$GITHUB_ENV"
-          echo "EXTERNAL_DIRECTORY_STATE_KEY=olga/external-directory/${{ needs.quality.outputs.environment }}.tfstate" >> "$GITHUB_ENV"
 
       - name: Sign in to Azure with OIDC
         uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -255,56 +241,6 @@ jobs:
           [[ $exit_code -eq 2 ]] && has_changes=true || has_changes=false
           echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
 
-      - name: Initialize External ID directory state
-        working-directory: bootstrap/external-directory
-        shell: bash
-        run: |
-          terraform init -input=false -reconfigure \
-            -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
-            -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
-            -backend-config="container_name=$TFSTATE_CONTAINER" \
-            -backend-config="key=$EXTERNAL_DIRECTORY_STATE_KEY" \
-            -backend-config="tenant_id=$ARM_TENANT_ID" \
-            -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID" \
-            -backend-config="use_azuread_auth=true"
-
-      - name: Create External ID directory saved plan
-        id: external_directory_plan
-        working-directory: bootstrap/external-directory
-        shell: bash
-        env:
-          TF_VAR_environment: ${{ needs.quality.outputs.environment }}
-        run: |
-          set -euo pipefail
-          set +e
-          terraform plan -input=false -json -detailed-exitcode -lock-timeout=5m \
-            -out=../../plan/external-directory.tfplan | jq --unbuffered -r '
-              if .type == "refresh_start" or
-                 .type == "refresh_complete" or
-                 .type == "planned_change" or
-                 .type == "change_summary" then
-                .["@message"] // empty
-              elif .type == "diagnostic" then
-                "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
-              else
-                empty
-              end
-            '
-          pipeline_status=("${PIPESTATUS[@]}")
-          exit_code=${pipeline_status[0]}
-          filter_exit_code=${pipeline_status[1]}
-          set -e
-          if [[ $filter_exit_code -ne 0 ]]; then
-            echo "::error::The External ID plan event filter failed with exit code $filter_exit_code."
-            exit "$filter_exit_code"
-          fi
-          if [[ $exit_code -eq 1 ]]; then
-            echo "::error::External ID directory plan failed. Review the filtered diagnostic summary above."
-            exit 1
-          fi
-          [[ $exit_code -eq 2 ]] && has_changes=true || has_changes=false
-          echo "has_changes=$has_changes" >> "$GITHUB_OUTPUT"
-
       - name: Create value-free plan summary
         id: summary
         shell: bash
@@ -347,49 +283,10 @@ jobs:
           (cd plan && sha256sum tfplan > tfplan.sha256)
           jq -n --arg commit "$GITHUB_SHA" --arg environment "$DEPLOY_ENVIRONMENT" \
             --arg version "$TERRAFORM_VERSION" --arg state_key "$TFSTATE_KEY" \
-            --arg external_directory_state_key "$EXTERNAL_DIRECTORY_STATE_KEY" \
-            '{commit: $commit, environment: $environment, terraform_version: $version, state_key: $state_key, external_directory_state_key: $external_directory_state_key}' \
+            '{commit: $commit, environment: $environment, terraform_version: $version, state_key: $state_key}' \
             > plan/manifest.json
           echo "has_changes=$HAS_CHANGES" >> "$GITHUB_OUTPUT"
           rm -f "$RUNNER_TEMP/tfplan.json"
-
-      - name: Create External ID directory plan summary
-        shell: bash
-        env:
-          DEPLOY_ENVIRONMENT: ${{ needs.quality.outputs.environment }}
-        run: |
-          set -euo pipefail
-          terraform -chdir=bootstrap/external-directory show -json ../../plan/external-directory.tfplan > "$RUNNER_TEMP/external-directory-plan.json"
-          create_count=$(jq '[.resource_changes[]? | select(.change.actions == ["create"])] | length' "$RUNNER_TEMP/external-directory-plan.json")
-          update_count=$(jq '[.resource_changes[]? | select(.change.actions == ["update"])] | length' "$RUNNER_TEMP/external-directory-plan.json")
-          replace_count=$(jq '[.resource_changes[]? | select((.change.actions | index("create")) != null and (.change.actions | index("delete")) != null)] | length' "$RUNNER_TEMP/external-directory-plan.json")
-          destroy_count=$(jq '[.resource_changes[]? | select((.change.actions | index("delete")) != null)] | length' "$RUNNER_TEMP/external-directory-plan.json")
-          jq -r '
-            .resource_changes[]?
-            | select(.change.actions != ["no-op"])
-            | "\(.change.actions | join("/"))\t\(.address)"
-          ' "$RUNNER_TEMP/external-directory-plan.json" | sort > plan/external-directory-actions.txt
-          {
-            echo "### External ID directory plan"
-            echo "- Environment: \`$DEPLOY_ENVIRONMENT\`"
-            echo "- Create: $create_count"
-            echo "- Update: $update_count"
-            echo "- Replace: $replace_count"
-            echo "- Includes delete: $destroy_count"
-            [[ $destroy_count -eq 0 ]] || echo "- **Destructive directory change detected: review before approval.**"
-            echo
-            echo '```text'
-            if [[ -s plan/external-directory-actions.txt ]]; then
-              cat plan/external-directory-actions.txt
-            else
-              echo "No resource changes."
-            fi
-            echo '```'
-          } > plan/external-directory-summary.md
-          cat plan/external-directory-summary.md
-          cat plan/external-directory-summary.md >> "$GITHUB_STEP_SUMMARY"
-          (cd plan && sha256sum external-directory.tfplan > external-directory.tfplan.sha256)
-          rm -f "$RUNNER_TEMP/external-directory-plan.json"
 
       - name: Upload saved plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -404,8 +301,7 @@ jobs:
     if: >-
       github.event_name != 'pull_request' &&
       needs.plan.result == 'success' &&
-      (needs.plan.outputs.has_changes == 'true' ||
-       needs.plan.outputs.external_directory_has_changes == 'true')
+      needs.plan.outputs.has_changes == 'true'
     needs: [quality, plan]
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -427,14 +323,6 @@ jobs:
       TFSTATE_STORAGE_ACCOUNT: ${{ vars.TFSTATE_STORAGE_ACCOUNT }}
       TFSTATE_CONTAINER: ${{ vars.TFSTATE_CONTAINER }}
       TFSTATE_KEY: ${{ vars.TFSTATE_KEY }}
-      TF_VAR_external_tenant_id: ${{ vars.EXTERNAL_TENANT_ID }}
-      TF_VAR_external_directory_client_id: ${{ vars.EXTERNAL_DIRECTORY_CLIENT_ID }}
-      TF_VAR_use_oidc: "true"
-      TF_VAR_tenant_subdomain: ${{ vars.EXTERNAL_TENANT_SUBDOMAIN }}
-      TF_VAR_tenant_data_location: ${{ vars.EXTERNAL_TENANT_DATA_LOCATION }}
-      TF_VAR_mobile_redirect_uri: ${{ vars.MOBILE_REDIRECT_URI }}
-      TF_VAR_google_identity_provider_id: ${{ vars.GOOGLE_IDENTITY_PROVIDER_ID }}
-      TF_VAR_apple_identity_provider_id: ${{ vars.APPLE_IDENTITY_PROVIDER_ID }}
     steps:
       - name: Check out planned commit
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -453,17 +341,12 @@ jobs:
         run: |
           set -euo pipefail
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
-            TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
-            TF_VAR_external_tenant_id TF_VAR_external_directory_client_id \
-            TF_VAR_tenant_subdomain TF_VAR_tenant_data_location TF_VAR_mobile_redirect_uri \
-            TF_VAR_google_identity_provider_id TF_VAR_apple_identity_provider_id; do
+            TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required apply environment variable $name is not configured."
               exit 1
             fi
           done
-          echo "TF_VAR_tenant_primary_domain=${TF_VAR_tenant_subdomain}.onmicrosoft.com" >> "$GITHUB_ENV"
-          echo "EXTERNAL_DIRECTORY_STATE_KEY=olga/external-directory/${{ needs.quality.outputs.environment }}.tfstate" >> "$GITHUB_ENV"
 
       - name: Sign in to Azure with OIDC
         uses: Azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -482,19 +365,6 @@ jobs:
             -backend-config="key=$TFSTATE_KEY" \
             -backend-config="use_azuread_auth=true"
 
-      - name: Initialize matching External ID directory state
-        working-directory: bootstrap/external-directory
-        shell: bash
-        run: |
-          terraform init -input=false -reconfigure \
-            -backend-config="resource_group_name=$TFSTATE_RESOURCE_GROUP" \
-            -backend-config="storage_account_name=$TFSTATE_STORAGE_ACCOUNT" \
-            -backend-config="container_name=$TFSTATE_CONTAINER" \
-            -backend-config="key=$EXTERNAL_DIRECTORY_STATE_KEY" \
-            -backend-config="tenant_id=$ARM_TENANT_ID" \
-            -backend-config="subscription_id=$ARM_SUBSCRIPTION_ID" \
-            -backend-config="use_azuread_auth=true"
-
       - name: Download saved plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -511,9 +381,7 @@ jobs:
           [[ "$(jq -r .environment plan/manifest.json)" == "$DEPLOY_ENVIRONMENT" ]]
           [[ "$(jq -r .terraform_version plan/manifest.json)" == "$TERRAFORM_VERSION" ]]
           [[ "$(jq -r .state_key plan/manifest.json)" == "$TFSTATE_KEY" ]]
-          [[ "$(jq -r .external_directory_state_key plan/manifest.json)" == "$EXTERNAL_DIRECTORY_STATE_KEY" ]]
           (cd plan && sha256sum --check --strict tfplan.sha256)
-          (cd plan && sha256sum --check --strict external-directory.tfplan.sha256)
 
       - name: Apply exact saved plan
         shell: bash
@@ -549,45 +417,6 @@ jobs:
             echo "Applied the reviewed \`$DEPLOY_ENVIRONMENT\` plan." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::error::Terraform apply failed with exit code $exit_code. Review the filtered diagnostic summary above."
-            exit "$exit_code"
-          fi
-
-      - name: Apply exact External ID directory saved plan
-        working-directory: bootstrap/external-directory
-        shell: bash
-        env:
-          DEPLOY_ENVIRONMENT: ${{ needs.quality.outputs.environment }}
-          TF_VAR_environment: ${{ needs.quality.outputs.environment }}
-        run: |
-          set -euo pipefail
-          set +e
-          terraform apply -input=false -json -lock-timeout=10m ../../plan/external-directory.tfplan | jq --unbuffered -r '
-            if .type == "refresh_start" or
-               .type == "refresh_complete" or
-               .type == "apply_start" or
-               .type == "apply_progress" or
-               .type == "apply_complete" or
-               .type == "apply_errored" or
-               .type == "change_summary" then
-              .["@message"] // empty
-            elif .type == "diagnostic" then
-              "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
-            else
-              empty
-            end
-          '
-          pipeline_status=("${PIPESTATUS[@]}")
-          exit_code=${pipeline_status[0]}
-          filter_exit_code=${pipeline_status[1]}
-          set -e
-          if [[ $filter_exit_code -ne 0 ]]; then
-            echo "::error::The External ID apply event filter failed with exit code $filter_exit_code."
-            exit "$filter_exit_code"
-          fi
-          if [[ $exit_code -eq 0 ]]; then
-            echo "Applied the reviewed External ID directory \`$DEPLOY_ENVIRONMENT\` plan." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::error::External ID directory apply failed with exit code $exit_code. Review the filtered diagnostic summary above."
             exit "$exit_code"
           fi
 
