@@ -10,6 +10,11 @@ output "core_api_id" { value = azurerm_container_app.core_api.id }
 output "nlp_api_id" { value = azurerm_container_app.nlp_api.id }
 output "nlp_worker_id" { value = azurerm_container_app.nlp_worker.id }
 output "database_migration_job_name" { value = azurerm_container_app_job.database_migration.name }
+output "admin_static_web_app_name" { value = try(azurerm_static_web_app.admin[0].name, null) }
+output "admin_static_web_app_default_host_name" { value = try(azurerm_static_web_app.admin[0].default_host_name, null) }
+output "admin_static_web_app_url" {
+  value = try("https://${azurerm_static_web_app.admin[0].default_host_name}", null)
+}
 output "signalr_service_id" { value = try(azurerm_signalr_service.this[0].id, null) }
 output "notification_hub_namespace_id" { value = try(azurerm_notification_hub_namespace.this[0].id, null) }
 output "content_safety_account_id" { value = try(azurerm_cognitive_account.content_safety[0].id, null) }

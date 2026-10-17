@@ -185,6 +185,8 @@ module "platform" {
   apim_publisher_name                      = var.apim_publisher_name
   apim_publisher_email                     = var.apim_publisher_email
   enable_admin_static_web_app              = var.enable_admin_static_web_app
+  admin_static_web_app_location            = var.admin_static_web_app_location
+  admin_static_web_app_sku_tier            = var.admin_static_web_app_sku_tier
   enable_azure_openai                      = var.enable_azure_openai
   azure_openai_location                    = var.azure_openai_location
   azure_openai_model_version               = var.azure_openai_model_version

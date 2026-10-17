@@ -51,7 +51,7 @@ terraform plan -out=dev.tfplan
 terraform apply dev.tfplan
 ```
 
-The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI and NLP application delivery are enabled; Service Bus remains disabled because the NLP worker polls PostgreSQL. API Management, Static Web Apps, Content Safety, SignalR, and Notification Hubs remain disabled.
+The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI, NLP application delivery, and the Free-tier admin Static Web App are enabled; Service Bus remains disabled because the NLP worker polls PostgreSQL. API Management, Content Safety, SignalR, and Notification Hubs remain disabled.
 
 The first apply uses Microsoft's public Container Apps bootstrap image. Application repositories own subsequent immutable image revisions; Terraform owns identities, secrets, registry authentication, ingress, and ports. Core and NLP are independently configurable and both use port `8080` by default:
 
@@ -80,6 +80,21 @@ The API URL outputs remain available with:
 terraform output -raw core_swagger_url
 terraform output -raw nlp_swagger_url
 ```
+
+## Admin portal deployment
+
+The admin portal is a React/Vite client-side SPA, so Azure Static Web Apps hosts it without a long-running App Service plan or a container image. The Static Web Apps region is configured separately from the primary workload region; development uses `eastasia` and the Free plan. The production example uses the Standard plan so an SLA and network restrictions can be adopted without changing hosting technology.
+
+After the infrastructure apply, retrieve the site values:
+
+```powershell
+terraform output -raw admin_static_web_app_name
+terraform output -raw admin_static_web_app_url
+```
+
+Use the URL as the Microsoft Entra SPA redirect origin and the allowed CORS origin in Olga.Core. In the admin portal repository's matching GitHub Environment, set `ADMIN_API_BASE_URL`, the `ADMIN_AUTH_*` variables, and `AZURE_STATIC_WEB_APPS_API_TOKEN`. Retrieve the deployment token from the Static Web App in Azure Portal; do not store it in Terraform variables, outputs, or source control. The portal's existing deployment workflow builds once, writes the environment-specific `config.json` and security policy, and uploads `dist` to this resource.
+
+Do not treat the portal's client-side MSAL role check as authorization. Before production use, Olga.Core must validate the access token and require the `Olga.Admin` application role on every `/v1/admin` route. The current Core API intentionally leaves those routes open, so deploying the static files does not make the administrative operations secure.
 
 The application images must serve Swagger at `/swagger/index.html`. Development deployments already set `ASPNETCORE_ENVIRONMENT=Development`; if an application restricts Swagger to Development, keep that restriction explicit in the application repository before exposing a production deployment.
 

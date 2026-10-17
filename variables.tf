@@ -335,8 +335,26 @@ variable "apim_publisher_email" {
 }
 
 variable "enable_admin_static_web_app" {
+  description = "Provision the Azure Static Web App that hosts the admin portal SPA."
   type    = bool
   default = false
+}
+
+variable "admin_static_web_app_location" {
+  description = "Azure Static Web Apps deployment region. This is separate from the primary workload region because service availability differs."
+  type        = string
+  default     = "eastasia"
+}
+
+variable "admin_static_web_app_sku_tier" {
+  description = "Azure Static Web Apps plan. Use Free for development and Standard when production requires an SLA or network restrictions."
+  type        = string
+  default     = "Free"
+
+  validation {
+    condition     = contains(["Free", "Standard"], var.admin_static_web_app_sku_tier)
+    error_message = "admin_static_web_app_sku_tier must be Free or Standard."
+  }
 }
 
 variable "enable_azure_openai" {

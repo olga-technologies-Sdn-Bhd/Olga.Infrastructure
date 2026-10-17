@@ -669,8 +669,8 @@ resource "azurerm_static_web_app" "admin" {
 
   name                = "stapp-olga-admin-${var.suffix}"
   resource_group_name = var.resource_group_name
-  location            = var.location
-  sku_tier            = "Free"
-  sku_size            = "Free"
+  location            = var.admin_static_web_app_location
+  sku_tier            = var.admin_static_web_app_sku_tier
+  sku_size            = var.admin_static_web_app_sku_tier
   tags                = var.tags
 }

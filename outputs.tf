@@ -36,6 +36,21 @@ output "nlp_worker_identity_client_id" {
   value = module.platform.nlp_worker_identity_client_id
 }
 
+output "admin_static_web_app_name" {
+  description = "Azure Static Web App resource that hosts the admin portal, or null when disabled."
+  value       = module.platform.admin_static_web_app_name
+}
+
+output "admin_static_web_app_default_host_name" {
+  description = "Default admin portal hostname used for Entra SPA redirects and Core API CORS, or null when disabled."
+  value       = module.platform.admin_static_web_app_default_host_name
+}
+
+output "admin_static_web_app_url" {
+  description = "Default HTTPS URL for the admin portal, or null when disabled."
+  value       = module.platform.admin_static_web_app_url
+}
+
 output "azure_openai_endpoint" {
   value = module.platform.azure_openai_endpoint
 }

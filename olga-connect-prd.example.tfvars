@@ -4,6 +4,10 @@
 environment = "prod"
 location    = "malaysiawest"
 
+enable_admin_static_web_app   = true
+admin_static_web_app_location = "eastasia"
+admin_static_web_app_sku_tier = "Standard"
+
 enable_azure_openai                    = true
 azure_openai_location                  = "australiaeast"
 azure_openai_model_version             = "1"
