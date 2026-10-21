@@ -253,7 +253,14 @@ resource "azapi_update_resource" "blob_service" {
 }
 
 resource "azapi_resource" "container" {
-  for_each = toset(["chat-files", "verification-evidence", "privacy-exports", "evaluation-reports"])
+  for_each = toset([
+    "chat-files",
+    "verification-evidence",
+    "privacy-exports",
+    "evaluation-reports",
+    "profile-images-pending",
+    "profile-images",
+  ])
 
   type      = "Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01"
   parent_id = azapi_update_resource.blob_service.id
@@ -263,6 +270,44 @@ resource "azapi_resource" "container" {
       publicAccess = "None"
     }
   }
+}
+
+resource "azurerm_storage_management_policy" "profile_images" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "delete-pending-profile-images"
+    enabled = true
+
+    filters {
+      prefix_match = ["profile-images-pending/"]
+      blob_types   = ["blockBlob"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 3
+      }
+    }
+  }
+
+  rule {
+    name    = "delete-replaced-profile-images"
+    enabled = true
+
+    filters {
+      prefix_match = ["profile-images/replaced/"]
+      blob_types   = ["blockBlob"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+    }
+  }
+
+  depends_on = [azapi_resource.container]
 }
 
 resource "azurerm_private_dns_zone" "blob" {
