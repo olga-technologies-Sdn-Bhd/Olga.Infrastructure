@@ -188,7 +188,7 @@ jobs:
           done
 
       - name: Sign in to Azure with OIDC
-        uses: Azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -287,7 +287,7 @@ jobs:
           rm -f "$RUNNER_TEMP/tfplan.json"
 
       - name: Upload saved plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: terraform-plan-${{ needs.quality.outputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan/
@@ -347,7 +347,7 @@ jobs:
           done
 
       - name: Sign in to Azure with OIDC
-        uses: Azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -364,7 +364,7 @@ jobs:
             -backend-config="use_azuread_auth=true"
 
       - name: Download saved plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: terraform-plan-${{ needs.quality.outputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan
