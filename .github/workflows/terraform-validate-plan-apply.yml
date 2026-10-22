@@ -14,10 +14,6 @@ on:
         type: choice
         options: [dev, prd]
 
-concurrency:
-  group: terraform-state-${{ github.event_name == 'workflow_dispatch' && inputs.environment || github.event_name == 'pull_request' && (github.base_ref == 'main' && 'prd' || 'dev') || (github.ref_name == 'main' && 'prd' || 'dev') }}
-  cancel-in-progress: false
-
 permissions:
   contents: read
 
@@ -136,6 +132,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     environment: ${{ format('{0}-plan', needs.quality.outputs.environment) }}
+    concurrency:
+      group: terraform-plan-${{ needs.quality.outputs.environment }}
+      cancel-in-progress: ${{ needs.quality.outputs.environment == 'dev' }}
     permissions:
       contents: read
       id-token: write
@@ -223,12 +222,7 @@ jobs:
                  .type == "change_summary" then
                 .["@message"] // empty
               elif .type == "diagnostic" then
-                ("Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")") +
-                (if ((.diagnostic.summary // "") | test("state lock"; "i")) then
-                   "\n\(.diagnostic.detail // "Lock details not reported")"
-                 else
-                   ""
-                 end)
+                "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
               else
                 empty
               end
@@ -313,6 +307,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment: ${{ needs.quality.outputs.environment }}
+    concurrency:
+      group: terraform-apply-${{ needs.quality.outputs.environment }}
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
@@ -404,12 +401,7 @@ jobs:
                .type == "change_summary" then
               .["@message"] // empty
             elif .type == "diagnostic" then
-              ("Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")") +
-              (if ((.diagnostic.summary // "") | test("state lock"; "i")) then
-                 "\n\(.diagnostic.detail // "Lock details not reported")"
-               else
-                 ""
-               end)
+              "Terraform \(.diagnostic.severity): \(.diagnostic.summary // "unspecified diagnostic")\nResource: \(.diagnostic.address // "not reported")"
             else
               empty
             end
