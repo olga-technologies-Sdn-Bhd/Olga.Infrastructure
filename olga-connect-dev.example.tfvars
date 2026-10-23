@@ -23,10 +23,10 @@ nlp_api_min_replicas                    = 0
 
 # Optional paid services remain off in development. Enabling Service Bus also
 # creates the dedicated Core worker; min_replicas=1 continuously drains its DB outbox.
-enable_service_bus       = false
-enable_signalr           = false
-enable_notification_hubs = false
-enable_content_safety    = false
+enable_service_bus       = true
+enable_signalr           = true
+enable_notification_hubs = true
+enable_content_safety    = true
 
 # The current Core API still uses the temporary X-Member-Id path. Keep this false
 # until the deployed image actually enforces External ID authentication.

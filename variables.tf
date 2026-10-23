@@ -446,24 +446,25 @@ variable "azure_openai_embedding_capacity" {
 }
 
 variable "enable_content_safety" {
-  type    = bool
-  default = false
+  description = "Provision Azure AI Content Safety for Core worker consumption. Enabled by default for the standard chat platform."
+  type        = bool
+  default     = true
 }
 
 variable "enable_signalr" {
-  description = "Provision Azure SignalR for managed realtime delivery. This is an explicit cost-bearing feature flag."
+  description = "Provision Azure SignalR for managed realtime delivery. Enabled by default for the standard chat platform."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_notification_hubs" {
-  description = "Provision Notification Hubs resources and sender RBAC. APNS/FCM credentials are configured separately and never enter Terraform."
+  description = "Provision Notification Hubs resources and sender RBAC. Enabled by default; APNS/FCM credentials are configured separately and never enter Terraform."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_service_bus" {
-  description = "Provision the Core integration topology and dedicated Core worker. Required in production."
+  description = "Provision the Core integration topology and dedicated Core worker. Enabled by default for the standard chat platform."
   type        = bool
-  default     = false
+  default     = true
 }

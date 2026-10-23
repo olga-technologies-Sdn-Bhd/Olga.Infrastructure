@@ -162,12 +162,7 @@ jobs:
       TF_VAR_enable_admin_static_web_app: "true"
       TF_VAR_admin_static_web_app_location: eastasia
       TF_VAR_admin_static_web_app_sku_tier: ${{ needs.quality.outputs.environment == 'prd' && 'Standard' || 'Free' }}
-      TF_VAR_enable_service_bus: ${{ vars.ENABLE_SERVICE_BUS }}
-      TF_VAR_enable_signalr: ${{ vars.ENABLE_SIGNALR }}
-      TF_VAR_enable_notification_hubs: ${{ vars.ENABLE_NOTIFICATION_HUBS }}
-      TF_VAR_enable_content_safety: ${{ vars.ENABLE_CONTENT_SAFETY }}
-      TF_VAR_core_authentication_enforced: ${{ vars.CORE_AUTHENTICATION_ENFORCED }}
-      TF_VAR_core_worker_min_replicas: ${{ vars.CORE_WORKER_MIN_REPLICAS }}
+      TF_VAR_core_authentication_enforced: ${{ vars.CORE_AUTHENTICATION_ENFORCED || 'false' }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
     steps:
@@ -189,10 +184,7 @@ jobs:
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
             TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
             TF_VAR_tenant_id TF_VAR_location TF_VAR_owner TF_VAR_cost_center TF_VAR_expiry_date \
-            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity \
-            TF_VAR_enable_service_bus TF_VAR_enable_signalr TF_VAR_enable_notification_hubs \
-            TF_VAR_enable_content_safety TF_VAR_core_authentication_enforced \
-            TF_VAR_core_worker_min_replicas; do
+            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required plan environment variable $name is not configured."
               exit 1

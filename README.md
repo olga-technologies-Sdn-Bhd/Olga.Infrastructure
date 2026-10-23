@@ -16,7 +16,7 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - Core and NLP APIs with external HTTPS ingress
 - Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Dedicated Core outbox/completion/content-scan worker with its own managed identity when Service Bus is enabled
-- Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
+- Standard chat services using Service Bus, SignalR, Notification Hubs, and Content Safety; optional Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ terraform plan -out=dev.tfplan
 terraform apply dev.tfplan
 ```
 
-The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI, NLP application delivery, and the Free-tier admin Static Web App are enabled; Service Bus remains disabled because the NLP worker polls PostgreSQL. API Management, Content Safety, SignalR, and Notification Hubs remain disabled.
+The initial dev configuration uses a $50 monthly budget with alerts at 50%, 80%, and 100%; a December 1, 2026 review date; PostgreSQL `B_Standard_B1ms`; 32 GiB database storage; and 0.1 GB/day telemetry caps. Azure OpenAI, NLP application delivery, and the Free-tier admin Static Web App are enabled. The standard chat platform provisions Service Bus, SignalR, Notification Hubs, and Content Safety by default; API Management remains optional.
 
 The first apply uses Microsoft's public Container Apps bootstrap image. Application repositories own subsequent immutable image revisions; Terraform owns identities, secrets, registry authentication, ingress, and ports. Core and NLP are independently configurable and both use port `8080` by default:
 

@@ -862,7 +862,7 @@ resource "azurerm_cognitive_account" "content_safety" {
   location                      = var.location
   resource_group_name           = var.resource_group_name
   kind                          = "ContentSafety"
-  sku_name                      = "F0"
+  sku_name                      = var.environment == "prod" ? "S0" : "F0"
   custom_subdomain_name         = "cs-olga-${var.suffix}"
   local_auth_enabled            = false
   public_network_access_enabled = true

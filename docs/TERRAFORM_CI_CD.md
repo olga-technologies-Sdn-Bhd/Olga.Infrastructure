@@ -42,12 +42,9 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
 | `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
 | `EXTERNAL_IDENTITY` | Non-secret object containing the matching external tenant ID/subdomain/domain, redirect URI, mobile client ID, and API client ID |
-| `ENABLE_SERVICE_BUS` | Explicit `true`/`false`; production must be `true` and creates the dedicated Core worker |
-| `ENABLE_SIGNALR` | Explicit cost-bearing SignalR feature flag |
-| `ENABLE_NOTIFICATION_HUBS` | Explicit cost-bearing Notification Hubs feature flag |
-| `ENABLE_CONTENT_SAFETY` | Explicit Content Safety flag; does not by itself complete attachment safety |
-| `CORE_AUTHENTICATION_ENFORCED` | `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts; required in prd |
-| `CORE_WORKER_MIN_REPLICAS` | `1` recommended for dev with Service Bus; `2` or more required in prd |
+| `CORE_AUTHENTICATION_ENFORCED` | Optional readiness attestation. It defaults to `false`; set it to `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts. Production remains blocked until then. |
+
+Terraform enables Service Bus, SignalR, Notification Hubs, and Content Safety by default. It also selects one Core worker replica in dev and two in prd. No GitHub variables are required for those platform settings.
 
 The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 

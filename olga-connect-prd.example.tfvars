@@ -29,12 +29,12 @@ postgres_prod_geo_redundant_backup_enabled = false
 # Notification Hubs stay off until their application integrations are released;
 # setting either to true is an explicit cost-bearing production decision.
 enable_service_bus       = true
-enable_signalr           = false
-enable_notification_hubs = false
+enable_signalr           = true
+enable_notification_hubs = true
 
 # Content Safety is not enabled until the Core worker consumes and enforces its
 # verdicts; local image validation alone is not an attachment-safety boundary.
-enable_content_safety = false
+enable_content_safety = true
 
 # Set true only for a Core image that validates External ID access tokens and
 # rejects X-Member-Id/default-member identity selection. Production is blocked otherwise.
