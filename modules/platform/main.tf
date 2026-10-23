@@ -475,6 +475,8 @@ resource "azurerm_container_app" "core_worker" {
           value = azurerm_notification_hub.this[0].name
         }
       }
+      # Retained until the later Core integration to avoid revising the existing
+      # worker. Notification Hubs data-plane authentication uses SAS, not this ID.
       dynamic "env" {
         for_each = var.enable_notification_hubs ? [1] : []
         content {
@@ -837,28 +839,31 @@ resource "azurerm_notification_hub" "this" {
   tags                = var.tags
 }
 
-resource "azurerm_role_assignment" "core_worker_notification_sender" {
+resource "azurerm_notification_hub_authorization_rule" "core_worker_send" {
   count = var.enable_notification_hubs ? 1 : 0
 
-  scope                            = azurerm_notification_hub.this[0].id
-  role_definition_name             = "Azure Notification Hubs Data Sender"
-  principal_id                     = var.core_worker_identity_principal_id
-  skip_service_principal_aad_check = true
+  name                  = "core-worker-send"
+  notification_hub_name = azurerm_notification_hub.this[0].name
+  namespace_name        = azurerm_notification_hub_namespace.this[0].name
+  resource_group_name   = var.resource_group_name
+  manage                = false
+  listen                = false
+  send                  = true
 }
 
-resource "azurerm_monitor_diagnostic_setting" "notification_hub" {
+# Notification Hubs supports SAS rather than managed-identity data-plane access.
+# Store the least-privilege send connection in the existing private Key Vault;
+# the later Core integration can resolve it through its managed identity.
+resource "azapi_resource" "notification_hub_send_connection" {
   count = var.enable_notification_hubs ? 1 : 0
 
-  name                       = "diag-olga-notification-hub-${var.environment}"
-  target_resource_id         = azurerm_notification_hub_namespace.this[0].id
-  log_analytics_workspace_id = var.log_analytics_workspace_id
-
-  enabled_log {
-    category_group = "allLogs"
-  }
-
-  enabled_metric {
-    category = "AllMetrics"
+  type      = "Microsoft.KeyVault/vaults/secrets@2023-07-01"
+  parent_id = var.key_vault_id
+  name      = "notification-hubs-core-worker-send"
+  body = {
+    properties = {
+      value = azurerm_notification_hub_authorization_rule.core_worker_send[0].primary_connection_string
+    }
   }
 }
 

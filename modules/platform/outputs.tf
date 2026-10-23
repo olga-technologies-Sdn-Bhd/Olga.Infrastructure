@@ -24,6 +24,9 @@ output "notification_hub_namespace_id" { value = try(azurerm_notification_hub_na
 output "notification_hub_id" { value = try(azurerm_notification_hub.this[0].id, null) }
 output "notification_hub_namespace_name" { value = try(azurerm_notification_hub_namespace.this[0].name, null) }
 output "notification_hub_name" { value = try(azurerm_notification_hub.this[0].name, null) }
+output "notification_hub_send_connection_secret_uri" {
+  value = try("${var.key_vault_uri}secrets/${azapi_resource.notification_hub_send_connection[0].name}", null)
+}
 output "content_safety_account_id" { value = try(azurerm_cognitive_account.content_safety[0].id, null) }
 output "openai_account_id" { value = try(azurerm_cognitive_account.openai[0].id, null) }
 output "azure_openai_account_id" { value = try(azurerm_cognitive_account.openai[0].id, null) }

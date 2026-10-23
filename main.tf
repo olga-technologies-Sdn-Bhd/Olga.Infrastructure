@@ -116,7 +116,7 @@ resource "azurerm_role_assignment" "platform_administrator_notification_hubs" {
   for_each = var.enable_notification_hubs ? local.platform_administrator_principal_ids : toset([])
 
   scope                = module.platform.notification_hub_namespace_id
-  role_definition_name = "Azure Notification Hubs Data Owner"
+  role_definition_name = "Contributor"
   principal_id         = each.value
 }
 
@@ -175,6 +175,8 @@ module "platform" {
   postgres_connection_secret_uri           = module.data.postgres_connection_secret_uri
   service_token_secret_uri                 = module.data.service_token_secret_uri
   identity_master_key_secret_uri           = module.data.identity_master_key_secret_uri
+  key_vault_id                             = module.data.key_vault_id
+  key_vault_uri                            = module.data.key_vault_uri
   storage_blob_endpoint                    = module.data.storage_blob_endpoint
   servicebus_fully_qualified_namespace     = module.data.servicebus_fully_qualified_namespace
   core_identity_id                         = module.foundation.core_identity_id
@@ -536,8 +538,8 @@ resource "azurerm_monitor_metric_alert" "signalr_server_connections" {
 
 resource "azurerm_monitor_metric_alert" "notification_failures" {
   for_each = var.environment == "prod" && var.enable_notification_hubs ? {
-    failed         = "outgoing.allpns.failed"
-    invalid_tokens = "outgoing.allpns.pnsinvalid"
+    failed         = "incoming.all.failedrequests"
+    invalid_tokens = "outgoing.allpns.badorexpiredchannel"
   } : {}
 
   name                = "alert-olga-prod-notification-${replace(each.key, "_", "-")}"

@@ -10,7 +10,9 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 4. `ProfileImageUploaded.v1` is sent to `content-scan`; the Core worker validates and transforms the private pending blob. This is image validation, not a complete malware/content-safety pipeline.
 5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
 
-The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their managed-identity RBAC, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
+The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their access controls, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
+
+Notification Hubs does not support routing its operational logs or metrics to the existing Log Analytics workspace through diagnostic settings. Azure Activity Log collection remains automatic, and production alerts query Notification Hubs platform metrics directly without diagnostic export.
 
 Terraform intentionally does not create `embedding`, `notification`, `privacy-retention`, or `outbox` queues: no current Core or NLP process consumes them. Add an entity and entity-scoped RBAC only when the consuming code and deployment setting exist.
 
@@ -40,10 +42,11 @@ The current Core source also has no SignalR hub integration and no Notification 
 | `SignalR__Endpoint` / `signalr_endpoint` | SignalR resource | Managed realtime endpoint supplied to the Core API and Core worker; no connection string is emitted |
 | `SignalR__ManagedIdentityClientId` | Core API or Core worker user-assigned identity | Keyless SignalR authentication for connection handling and committed-event publication |
 | `NotificationHubs__NamespaceName`, `HubName` | optional Notification Hubs resources | Push routing coordinates |
+| Future `NotificationHubs__ConnectionString` | `notification_hub_send_connection_secret_uri` output referencing the `core-worker-send` authorization rule | Send-only SAS authentication for the later Core integration; current Container Apps are not modified |
 | `core_worker_container_app_name` | dedicated Core worker Container App | Core image deployment target |
 | `core_worker_identity_client_id` | dedicated Core worker identity | Core worker Azure SDK client ID |
 
-The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. The Core API and Core worker each receive `SignalR App Server` only when SignalR is enabled; the worker publishes committed chat events while the API owns authenticated connection handling. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
+The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. The Core API and Core worker each receive `SignalR App Server` only when SignalR is enabled; the worker publishes committed chat events while the API owns authenticated connection handling. Notification Hubs does not provide managed-identity data-plane authorization, so Terraform prepares a dedicated send-only SAS rule and private Key Vault secret for the later Core integration without modifying the current Container Apps. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
 
 ## Availability and scaling
 
@@ -82,7 +85,7 @@ SignalR, Notification Hubs, and Content Safety are provisioned before their cons
 
 ## APNS and FCM credentials
 
-Terraform creates the namespace, hub, diagnostics, sender RBAC, and the following reserved secret names, but does not accept or configure provider credentials:
+Terraform creates the namespace, hub, send-only backend authorization rule, and the following reserved secret names, but does not accept or configure provider credentials:
 
 - `notification-hubs-apns-credential`
 - `notification-hubs-fcm-v1-credential`
@@ -91,7 +94,7 @@ For each environment, a protected operator must:
 
 1. Store the APNS token credential and FCM v1 service-account credential under those names in that environment's Key Vault. Never put them in tfvars, GitHub variables, plan summaries, outputs, or source.
 2. Configure the matching Notification Hub through an approved protected credential procedure (Portal or a separately reviewed secret-consuming workflow). Provider limitations mean this remains outside Terraform state.
-3. Confirm the Core worker identity has only `Azure Notification Hubs Data Sender`, then send a non-sensitive test notification.
+3. During the later Core integration, add a Container App Key Vault reference using `notification_hub_send_connection_secret_uri`, then send a non-sensitive test notification without exposing the connection string.
 4. Verify failed-send and invalid-token diagnostics and alerts, and remove invalid device registrations in the application workflow.
 
 Use separate APNS keys/FCM projects and Key Vault secrets for dev and production. Rotation must update Key Vault and the provider configuration without revealing values in logs.

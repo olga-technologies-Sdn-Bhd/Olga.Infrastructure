@@ -458,7 +458,7 @@ variable "enable_signalr" {
 }
 
 variable "enable_notification_hubs" {
-  description = "Provision Notification Hubs resources and sender RBAC. Enabled by default; APNS/FCM credentials are configured separately and never enter Terraform."
+  description = "Provision Notification Hubs resources and a send-only backend authorization rule. Enabled by default; APNS/FCM provider credentials are configured separately and never enter Terraform."
   type        = bool
   default     = true
 }

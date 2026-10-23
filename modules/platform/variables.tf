@@ -16,6 +16,8 @@ variable "acr_login_server" { type = string }
 variable "postgres_connection_secret_uri" { type = string }
 variable "service_token_secret_uri" { type = string }
 variable "identity_master_key_secret_uri" { type = string }
+variable "key_vault_id" { type = string }
+variable "key_vault_uri" { type = string }
 variable "storage_blob_endpoint" { type = string }
 variable "servicebus_fully_qualified_namespace" {
   type     = string

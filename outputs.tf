@@ -86,6 +86,11 @@ output "notification_hub_name" {
   value       = module.platform.notification_hub_name
 }
 
+output "notification_hub_send_connection_secret_uri" {
+  description = "Non-secret Key Vault URI for the send-only Notification Hubs connection prepared for the later Core integration."
+  value       = module.platform.notification_hub_send_connection_secret_uri
+}
+
 output "notification_hub_apns_key_vault_secret_name" {
   description = "Reserved Key Vault secret name for the manually protected APNS credential; no secret value is managed or output by Terraform."
   value       = var.enable_notification_hubs ? "notification-hubs-apns-credential" : null

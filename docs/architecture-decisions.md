@@ -18,7 +18,14 @@
 - Service Bus, SignalR, Notification Hubs, and Content Safety remain explicit cost-bearing feature
   flags; the reviewed development and production examples enable all four for the standard chat
   baseline. SignalR and Service Bus remain in Malaysia West; because Notification Hubs and Content
-  Safety are unavailable there, only those two services use Southeast Asia. Credentials remain
-  outside Terraform state.
+  Safety are unavailable there, only those two services use Southeast Asia. External provider
+  credentials remain outside Terraform state.
+- Notification Hubs data-plane access uses a dedicated send-only SAS authorization rule because
+  the service does not support managed-identity data-plane roles. Terraform stores its connection
+  string as sensitive remote state and in the private Key Vault. The URI is prepared for the later
+  Core integration without changing the current Core API or worker configuration.
+- Notification Hubs has no diagnostic setting targeting Log Analytics because its metric export is
+  disabled and its operational logs do not support that destination. Azure Activity Log and direct
+  platform-metric alerts provide the supported monitoring baseline.
 - Entra External ID Email OTP, Google, and Apple protect the mobile login experience only in the current Core build. Infrastructure supplies the API validation contract and blocks production unless an operator attests that the selected image enforces it; see `docs/SECURITY_DEBT.md`.
 
