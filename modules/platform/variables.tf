@@ -74,4 +74,3 @@ variable "azure_openai_embedding_capacity" { type = number }
 variable "enable_content_safety" { type = bool }
 variable "enable_signalr" { type = bool }
 variable "enable_notification_hubs" { type = bool }
-variable "enable_service_bus" { type = bool }

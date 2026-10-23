@@ -230,7 +230,6 @@ module "platform" {
   enable_content_safety                    = var.enable_content_safety
   enable_signalr                           = var.enable_signalr
   enable_notification_hubs                 = var.enable_notification_hubs
-  enable_service_bus                       = var.enable_service_bus
 }
 
 resource "azurerm_monitor_action_group" "production" {
