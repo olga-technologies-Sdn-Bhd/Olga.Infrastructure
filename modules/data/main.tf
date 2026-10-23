@@ -421,27 +421,25 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "core_profile_image_blob_data_contributor" {
-  for_each = merge(
-    {
-      for container_key in ["profile-images-pending", "profile-images", "chat-files"] :
-      "core:${container_key}" => {
-        principal_id  = var.core_identity_principal_id
-        container_key = container_key
-      }
-    },
-    {
-      for container_key in ["profile-images-pending", "profile-images", "chat-files"] :
-      "core_worker:${container_key}" => {
-        principal_id  = var.core_worker_identity_principal_id
-        container_key = container_key
-      }
-    }
-  )
+resource "azurerm_role_assignment" "blob_data_contributor" {
+  for_each = {
+    core   = var.core_identity_principal_id
+    nlp    = var.nlp_identity_principal_id
+    worker = var.worker_identity_principal_id
+  }
 
-  scope                            = azapi_resource.container[each.value.container_key].id
+  scope                            = azurerm_storage_account.this.id
   role_definition_name             = "Storage Blob Data Contributor"
-  principal_id                     = each.value.principal_id
+  principal_id                     = each.value
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_blob_data_contributor" {
+  for_each = toset(["profile-images-pending", "profile-images", "chat-files"])
+
+  scope                            = azapi_resource.container[each.value].id
+  role_definition_name             = "Storage Blob Data Contributor"
+  principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }
 

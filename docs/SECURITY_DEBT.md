@@ -39,3 +39,7 @@ Terraform now injects the External ID authority, tenant, client ID, audience, is
 - Confirm unauthenticated requests are rejected after enforcement.
 - Verify logs and telemetry redact authorization headers, access/refresh tokens, authorization codes, OTP values, and mask email/mobile values.
 - Review per-environment budget, traffic, failure, and latency alerts.
+
+## Legacy Blob RBAC
+
+The existing Core API, NLP API, and NLP worker retain storage-account-scoped `Storage Blob Data Contributor` assignments so this chat-infrastructure rollout does not revoke permissions from deployed workloads. The new Core worker uses container-scoped assignments for `profile-images-pending`, `profile-images`, and `chat-files`. After each existing workload's Blob usage is confirmed, replace its broad assignment with explicitly required container scopes in a separate staged migration.

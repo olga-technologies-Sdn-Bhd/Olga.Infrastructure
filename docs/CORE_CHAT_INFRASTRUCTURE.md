@@ -41,7 +41,7 @@ The current Core source also has no SignalR hub integration and no Notification 
 | `core_worker_container_app_name` | dedicated Core worker Container App | Core image deployment target |
 | `core_worker_identity_client_id` | dedicated Core worker identity | Core worker Azure SDK client ID |
 
-The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. The Core API and Core worker each receive `SignalR App Server` only when SignalR is enabled; the worker publishes committed chat events while the API owns authenticated connection handling. Runtime identities receive ACR pull, Key Vault, Blob, Service Bus, Notification Hubs, and Content Safety roles only at the resource/entity scopes used by their code. The NLP worker and its existing deployment path are unchanged.
+The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. The Core API and Core worker each receive `SignalR App Server` only when SignalR is enabled; the worker publishes committed chat events while the API owns authenticated connection handling. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
 
 ## Availability and scaling
 
@@ -69,7 +69,7 @@ The infrastructure boundary for the non-Phase-2 chat backlog is covered as follo
 | CHAT-06 message deletion | The Core worker can execute asynchronous deletion/retention work. Policy and per-member deletion semantics belong to Core and PostgreSQL. |
 | CHAT-07 chat search | MVP PostgreSQL search requires no separate cloud search resource. |
 | CHAT-08 archive and pin | No additional Azure resource is required. |
-| CHAT-09 privacy and access control | External ID settings, fail-closed production gate, private PostgreSQL/Blob access, HTTPS ingress, managed identities, Key Vault references, and scoped RBAC are provided. |
+| CHAT-09 privacy and access control | External ID settings, fail-closed production gate, private PostgreSQL/Blob access, HTTPS ingress, managed identities, Key Vault references, and scoped new RBAC are provided. Existing broad Blob assignments remain documented security debt. |
 | CHAT-10 offline delivery and retries | Durable Service Bus entities, duplicate detection, dead-lettering, a dedicated worker, minimum production replicas, diagnostics, and backlog/dead-letter alerts are provided. Client queueing and cursor recovery remain application responsibilities. |
 | CHAT-11 account deletion and retention | The Core worker supplies execution capacity. A privacy-retention queue is intentionally absent until a real consumer exists; the current design may use PostgreSQL background jobs instead. |
 | CHAT-12 history on a new device | Private PostgreSQL, production zone-redundant high availability, 35-day backups, and durable API hosting are provided. Restore policy and cursor synchronization remain application responsibilities. |
@@ -96,5 +96,5 @@ Use separate APNS keys/FCM projects and Key Vault secrets for dev and production
 
 ## Phase 2 files
 
-`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. Core API and Core worker retain container-scoped managed-identity access, but no attachment endpoint, public download URL, or delivery behavior is added in this phase. A later attachment design must add quarantine, malware/content-safety verdict enforcement, authorized short-lived download issuance, retention/deletion, and audit evidence before attachments are exposed. Enabling Azure Content Safety alone does not complete that boundary.
+`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. The Core worker receives container-scoped managed-identity access; the Core API retains its pre-existing storage-account assignment pending a separately reviewed RBAC migration. No attachment endpoint, public download URL, or delivery behavior is added in this phase. A later attachment design must add quarantine, malware/content-safety verdict enforcement, authorized short-lived download issuance, retention/deletion, and audit evidence before attachments are exposed. Enabling Azure Content Safety alone does not complete that boundary.
 
