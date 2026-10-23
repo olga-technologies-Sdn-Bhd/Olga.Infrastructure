@@ -6,7 +6,7 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 
 1. Core API writes business changes and `ops.outbox_event` in one PostgreSQL transaction.
 2. The Core worker polls the outbox and sends each event to the `integration-events` topic with `MessageId=outbox_event_id`, enabling Service Bus duplicate suppression.
-3. `core-nlp-completions` receives only `event_type = 'NlpMatchRequestCompleted.v1'` and the Core worker applies the completion to Core projections. Terraform updates the Azure-created `$Default` subscription rule in place so first deployment does not require a state import.
+3. `core-nlp-completions` receives only `event_type = 'NlpMatchRequestCompleted.v1'` and the Core worker applies the completion to Core projections. Terraform creates the selective rule first, then idempotently removes Azure's generated catch-all `$Default` rule so first deployment does not require a state import.
 4. `ProfileImageUploaded.v1` is sent to `content-scan`; the Core worker validates and transforms the private pending blob. This is image validation, not a complete malware/content-safety pipeline.
 5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
 

@@ -378,20 +378,35 @@ resource "azurerm_servicebus_subscription" "core_nlp_completions" {
   dead_lettering_on_message_expiration = true
 }
 
-resource "azapi_update_resource" "core_nlp_completions_default_rule" {
+resource "azurerm_servicebus_subscription_rule" "core_nlp_completions" {
   count = var.enable_service_bus ? 1 : 0
 
-  type        = "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2024-01-01"
-  resource_id = "${azurerm_servicebus_subscription.core_nlp_completions[0].id}/rules/$Default"
-  body = {
-    properties = {
-      filterType = "SqlFilter"
-      sqlFilter = {
-        compatibilityLevel    = 20
-        requiresPreprocessing = false
-        sqlExpression         = "event_type = 'NlpMatchRequestCompleted.v1'"
-      }
-    }
+  name            = "nlp-match-request-completed-v1"
+  subscription_id = azurerm_servicebus_subscription.core_nlp_completions[0].id
+  filter_type     = "SqlFilter"
+  sql_filter      = "event_type = 'NlpMatchRequestCompleted.v1'"
+}
+
+# Azure creates a catch-all $Default rule with every subscription. Remove only
+# that generated rule after the selective rule exists, otherwise every event is
+# still delivered and the SQL filter above has no effect.
+resource "terraform_data" "remove_core_nlp_completions_default_rule" {
+  count = var.enable_service_bus ? 1 : 0
+
+  triggers_replace = [
+    azurerm_servicebus_subscription_rule.core_nlp_completions[0].id,
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      default_rule_url="https://management.azure.com${azurerm_servicebus_subscription.core_nlp_completions[0].id}/rules/%24Default?api-version=2024-01-01"
+
+      if az rest --method get --url "$default_rule_url" --only-show-errors >/dev/null 2>&1; then
+        az rest --method delete --url "$default_rule_url" --only-show-errors >/dev/null
+      fi
+    EOT
   }
 }
 
