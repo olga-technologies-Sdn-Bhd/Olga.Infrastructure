@@ -378,13 +378,21 @@ resource "azurerm_servicebus_subscription" "core_nlp_completions" {
   dead_lettering_on_message_expiration = true
 }
 
-resource "azurerm_servicebus_subscription_rule" "core_nlp_completions" {
+resource "azapi_update_resource" "core_nlp_completions_default_rule" {
   count = var.enable_service_bus ? 1 : 0
 
-  name            = "$Default"
-  subscription_id = azurerm_servicebus_subscription.core_nlp_completions[0].id
-  filter_type     = "SqlFilter"
-  sql_filter      = "event_type = 'NlpMatchRequestCompleted.v1'"
+  type        = "Microsoft.ServiceBus/namespaces/topics/subscriptions/rules@2024-01-01"
+  resource_id = "${azurerm_servicebus_subscription.core_nlp_completions[0].id}/rules/$Default"
+  body = {
+    properties = {
+      filterType = "SqlFilter"
+      sqlFilter = {
+        compatibilityLevel    = 20
+        requiresPreprocessing = false
+        sqlExpression         = "event_type = 'NlpMatchRequestCompleted.v1'"
+      }
+    }
+  }
 }
 
 resource "azurerm_servicebus_queue" "work" {
