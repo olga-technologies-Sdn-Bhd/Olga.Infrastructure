@@ -42,6 +42,12 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
 | `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
 | `EXTERNAL_IDENTITY` | Non-secret object containing the matching external tenant ID/subdomain/domain, redirect URI, mobile client ID, and API client ID |
+| `ENABLE_SERVICE_BUS` | Explicit `true`/`false`; production must be `true` and creates the dedicated Core worker |
+| `ENABLE_SIGNALR` | Explicit cost-bearing SignalR feature flag |
+| `ENABLE_NOTIFICATION_HUBS` | Explicit cost-bearing Notification Hubs feature flag |
+| `ENABLE_CONTENT_SAFETY` | Explicit Content Safety flag; does not by itself complete attachment safety |
+| `CORE_AUTHENTICATION_ENFORCED` | `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts; required in prd |
+| `CORE_WORKER_MIN_REPLICAS` | `1` recommended for dev with Service Bus; `2` or more required in prd |
 
 The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 
@@ -73,11 +79,11 @@ Application delivery uses separate identities managed by this Terraform project:
 - Database identity: `id-gh-olga-database-<environment>-deploy`
 - Database dev subject: `repo:olga-technologies-Sdn-Bhd@324310778/olga-database@1356201535:environment:dev`
 - Registry permission: each identity has `AcrPush` scoped to the environment ACR
-- Core deployment permission: the Core identity has `Container Apps Contributor` scoped only to the Core API Container App
+- Core deployment permission: the Core identity has separate `Container Apps Contributor` assignments scoped only to the Core API and dedicated Core worker Container Apps
 - NLP deployment permission: the NLP identity has separate `Container Apps Contributor` assignments scoped to the NLP API and NLP worker Container Apps
 - Database deployment permission: `Container Apps Jobs Operator` scoped only to the migration job
 
-After Terraform creates the identities, copy `core_deployment_identity_client_id`, `nlp_deployment_identity_client_id`, and `database_deployment_identity_client_id` to the matching repository GitHub Environment as `AZURE_CLIENT_ID`. Keep tenant, subscription, ACR login server, resource group, Container App, and migration-job settings aligned with the infrastructure outputs. Each application workflow owns image digest releases and supplies its revision suffix. The database workflow starts an exact image digest as a one-off job execution. Terraform intentionally ignores API image drift while continuing to manage all other Container App configuration; Azure generates a fresh suffix for any Terraform-driven template revision.
+After Terraform creates the identities, copy `core_deployment_identity_client_id`, `nlp_deployment_identity_client_id`, and `database_deployment_identity_client_id` to the matching repository GitHub Environment as `AZURE_CLIENT_ID`. The Core workflow updates both `core_api_url`'s Container App and `core_worker_container_app_name`; the runtime worker uses `core_worker_identity_client_id`, not the GitHub deployment identity. Keep tenant, subscription, ACR login server, resource group, Container App, and migration-job settings aligned with the infrastructure outputs. Each application workflow owns image digest releases and supplies its revision suffix. The database workflow starts an exact image digest as a one-off job execution. Terraform intentionally ignores application image drift while continuing to manage all other Container App configuration; Azure generates a fresh suffix for any Terraform-driven template revision.
 
 Both Container Apps have liveness probes on `/health` and readiness probes on `/ready`, using port `8080`. The readiness endpoint verifies PostgreSQL connectivity. Keep these probes enabled in every environment after the real application images are deployed; bootstrap-only environments may temporarily disable them until application delivery is complete.
 

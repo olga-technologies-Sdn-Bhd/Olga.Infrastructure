@@ -2,7 +2,7 @@
 
 Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), the independent Apple federation workflow is documented in [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md), and the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). The Core worker, chat messaging, realtime, push, credential handoff, and configuration matrix are in [docs/CORE_CHAT_INFRASTRUCTURE.md](docs/CORE_CHAT_INFRASTRUCTURE.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), the independent Apple federation workflow is documented in [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md), and the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -12,9 +12,10 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - VNet-integrated Container Apps and private-endpoint subnets
 - PostgreSQL 17 Flexible Server with private application connectivity, IP-restricted DBeaver access, Microsoft Entra administration, 7-day development backup, `vector`, and `pg_stat_statements`
 - Private Key Vault and Blob Storage with purpose-specific containers
-- Optional Service Bus Standard queues with duplicate detection and dead-letter behavior
+- Optional Service Bus Standard integration topic, filtered Core subscription, and consumed work queue with duplicate detection and dead-letter behavior
 - Core and NLP APIs with external HTTPS ingress
 - Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
+- Dedicated Core outbox/completion/content-scan worker with its own managed identity when Service Bus is enabled
 - Optional SignalR, Notification Hubs, Content Safety, Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
@@ -68,11 +69,11 @@ The infrastructure apply creates one deployment identity per repository and trus
 
 The Core and NLP images expose `/health` and `/ready` on port `8080`, so Terraform enables both liveness and database-readiness probes by default. Keep these probes enabled for future releases; a new revision must not receive traffic or remain active when its process or PostgreSQL dependency is unhealthy.
 
-When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `2` for availability during replica failure or maintenance. In production, Core scales from 2 to 5 replicas at 50 concurrent requests per replica with 0.5 vCPU/1 GiB each; NLP scales from 2 to 5 at 25 concurrent requests per replica with 1 vCPU/2 GiB each. The production NLP worker runs two 1-vCPU/2-GiB replicas. Development retains its original replica counts and 0.25-vCPU/0.5-GiB allocations.
+When API minimum replica values are omitted, Terraform defaults development to `0` for scale-to-zero and production to `2` for availability during replica failure or maintenance. In production, Core scales from 2 to 5 replicas at 50 concurrent requests per replica with 0.5 vCPU/1 GiB each; NLP scales from 2 to 5 at 25 concurrent requests per replica with 1 vCPU/2 GiB each. The production NLP worker remains two 1-vCPU/2-GiB replicas. Service Bus additionally creates a separate Core worker, defaulting to one development replica and two production replicas. Development APIs can cold-start; use `core_api_min_replicas=1` during realtime testing.
 
 Production also uses a zone-redundant Container Apps environment, Premium zone-redundant ACR, ZRS Blob Storage, and PostgreSQL General Purpose compute with zone-redundant high availability, 128 GiB storage, automatic storage growth, and 35-day retention. Geo-redundant PostgreSQL backup is explicitly configurable and remains disabled in Malaysia West because Azure does not support it there; zone-redundant high availability and in-region backups remain enabled. Production telemetry retains 90 days, has a 5-GB daily cap with full sampling, and alerts the configured `BUDGET_ALERT_EMAILS` recipients for replica loss, container CPU/memory pressure, and PostgreSQL CPU/memory/storage pressure. Confirm SKU and availability-zone support in the selected Azure region during the reviewed production plan.
 
-The Core and NLP APIs have external HTTPS ingress. Both are currently exposed without application authentication, so do not treat either endpoint as private.
+The Core and NLP APIs have external HTTPS ingress. Current development images remain unauthenticated. Production Core creation is gated by `core_authentication_enforced=true`, which may be set only for an image that actually validates External ID tokens and disables `X-Member-Id`/default-member identity selection.
 
 The API URL outputs use each Container App's stable ingress hostname rather than a revision-specific hostname, so application releases do not change the published URL. They remain available with:
 
@@ -111,6 +112,7 @@ Changing the already-created dev server from delegated-subnet networking to this
 ## Application readiness
 
 - Core API expects port `8080`, `/health`, `/ready`, `ConnectionStrings__PostgreSql`, and `ServiceAuthorization__Token`.
+- Core worker expects the exact Service Bus and Blob settings documented in `docs/CORE_CHAT_INFRASTRUCTURE.md`; it is a separate Container App and identity from the NLP worker.
 - NLP API expects the same probes and secrets. It uses `EmbeddingProvider=Azure` and `EmbeddingProcessing__Mode=Queued`; evaluation endpoints retain direct managed-identity access to Azure OpenAI.
 - NLP API and worker use `AzureOpenAI__ModelVersion` for the stable application model identifier stored in `nlp.nlp_model_version`. This is distinct from `azure_openai_model_version`, which selects the Azure model catalog version.
 - The NLP worker remains at one replica for PostgreSQL polling and uses the same private Azure OpenAI endpoint with its own managed identity.
@@ -128,4 +130,4 @@ The mobile build needs only the environment's non-secret Entra client ID, tenant
 
 The complete runtime values, Expo configuration, `useEntraLogin` hook, provider routing contract, refresh/sign-out behavior, and physical-device verification checklist are maintained in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
 
-Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted temporary MVP phase. The mobile application can acquire and send an access token, but the APIs do not validate it yet. Do not interpret the identity outputs as API enforcement.
+The current Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted development-only MVP phase. The mobile application can acquire and send an access token, but the current APIs do not validate it yet. Do not interpret the identity outputs or `core_authentication_enforced` flag as API enforcement; production requires a compatible Core image first.

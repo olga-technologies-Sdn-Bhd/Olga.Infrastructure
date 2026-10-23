@@ -21,6 +21,12 @@ resource "azurerm_role_assignment" "core_acr_pull" {
   principal_id         = var.core_identity_principal_id
 }
 
+resource "azurerm_role_assignment" "core_worker_acr_pull" {
+  scope                = var.acr_id
+  role_definition_name = "AcrPull"
+  principal_id         = var.core_worker_identity_principal_id
+}
+
 resource "azurerm_role_assignment" "nlp_acr_pull" {
   scope                = var.acr_id
   role_definition_name = "AcrPull"
@@ -203,6 +209,84 @@ resource "azurerm_container_app" "core_api" {
         name  = "Diagnostics__IncludeExceptionDetails"
         value = var.environment == "prod" ? "false" : "true"
       }
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = var.core_identity_client_id
+      }
+      env {
+        name  = "Storage__BlobServiceEndpoint"
+        value = var.storage_blob_endpoint
+      }
+      env {
+        name  = "Storage__ManagedIdentityClientId"
+        value = var.core_identity_client_id
+      }
+      env {
+        name  = "Storage__PendingProfileImagesContainerName"
+        value = "profile-images-pending"
+      }
+      env {
+        name  = "Storage__ProfileImagesContainerName"
+        value = "profile-images"
+      }
+      env {
+        name  = "AzureAd__Instance"
+        value = var.external_identity_authority
+      }
+      env {
+        name  = "AzureAd__Authority"
+        value = var.external_identity_authority
+      }
+      env {
+        name  = "AzureAd__TenantId"
+        value = var.external_identity_tenant_id
+      }
+      env {
+        name  = "AzureAd__ClientId"
+        value = var.external_identity_client_id
+      }
+      env {
+        name  = "AzureAd__Audience"
+        value = var.external_identity_audience
+      }
+      env {
+        name  = "AzureAd__Issuer"
+        value = var.external_identity_issuer
+      }
+      env {
+        name  = "AzureAd__RequiredScope"
+        value = var.external_identity_required_scope
+      }
+      env {
+        name  = "AzureAd__RequiredRoles"
+        value = join(",", var.external_identity_required_roles)
+      }
+      env {
+        name  = "Authentication__RequireAuthenticatedUsers"
+        value = tostring(var.core_authentication_enforced)
+      }
+      env {
+        name  = "Mvp__AllowInsecureMemberHeader"
+        value = var.environment == "prod" ? "false" : "true"
+      }
+      env {
+        name  = "Mvp__DefaultMemberId"
+        value = var.environment == "prod" ? "" : "A123"
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
+          name  = "SignalR__Endpoint"
+          value = "https://${azurerm_signalr_service.this[0].hostname}"
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
+          name  = "SignalR__ManagedIdentityClientId"
+          value = var.core_identity_client_id
+        }
+      }
       dynamic "env" {
         for_each = var.enable_admin_static_web_app ? [1] : []
         content {
@@ -250,6 +334,11 @@ resource "azurerm_container_app" "core_api" {
 
   lifecycle {
     ignore_changes = [template[0].container[0].image]
+
+    precondition {
+      condition     = var.environment != "prod" || var.core_authentication_enforced
+      error_message = "Production Core API deployment is blocked until the image enforces External ID authentication and rejects X-Member-Id/default-member identity selection."
+    }
   }
 
   depends_on = [azurerm_role_assignment.core_acr_pull]
@@ -257,6 +346,156 @@ resource "azurerm_container_app" "core_api" {
 
 resource "azurerm_role_assignment" "core_deploy_container_app" {
   scope                            = azurerm_container_app.core_api.id
+  role_definition_name             = "Container Apps Contributor"
+  principal_id                     = var.core_deploy_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_container_app" "core_worker" {
+  count = var.core_worker_enabled ? 1 : 0
+
+  name                         = "ca-olga-core-worker-${var.environment}"
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  resource_group_name          = var.resource_group_name
+  workload_profile_name        = "Consumption"
+  revision_mode                = "Single"
+  tags                         = var.tags
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [var.core_worker_identity_id]
+  }
+
+  secret {
+    name                = "postgresql"
+    key_vault_secret_id = var.postgres_connection_secret_uri
+    identity            = var.core_worker_identity_id
+  }
+
+  registry {
+    server   = var.acr_login_server
+    identity = var.core_worker_identity_id
+  }
+
+  template {
+    min_replicas                     = var.core_worker_min_replicas
+    max_replicas                     = var.environment == "prod" ? 4 : 1
+    termination_grace_period_seconds = 60
+
+    container {
+      name   = "core-worker"
+      image  = var.core_worker_image
+      cpu    = var.environment == "prod" ? 0.5 : 0.25
+      memory = var.environment == "prod" ? "1Gi" : "0.5Gi"
+
+      env {
+        name  = "DOTNET_ENVIRONMENT"
+        value = var.environment == "prod" ? "Production" : "Development"
+      }
+      env {
+        name        = "ConnectionStrings__PostgreSql"
+        secret_name = "postgresql"
+      }
+      env {
+        name  = "AZURE_CLIENT_ID"
+        value = var.core_worker_identity_client_id
+      }
+      env {
+        name  = "ServiceBus__FullyQualifiedNamespace"
+        value = var.servicebus_fully_qualified_namespace
+      }
+      env {
+        name  = "ServiceBus__ManagedIdentityClientId"
+        value = var.core_worker_identity_client_id
+      }
+      env {
+        name  = "ServiceBus__IntegrationTopicName"
+        value = "integration-events"
+      }
+      env {
+        name  = "ServiceBus__NlpCompletionSubscriptionName"
+        value = "core-nlp-completions"
+      }
+      env {
+        name  = "ServiceBus__ContentScanQueueName"
+        value = "content-scan"
+      }
+      env {
+        name  = "Storage__BlobServiceEndpoint"
+        value = var.storage_blob_endpoint
+      }
+      env {
+        name  = "Storage__ManagedIdentityClientId"
+        value = var.core_worker_identity_client_id
+      }
+      env {
+        name  = "Storage__PendingProfileImagesContainerName"
+        value = "profile-images-pending"
+      }
+      env {
+        name  = "Storage__ProfileImagesContainerName"
+        value = "profile-images"
+      }
+      env {
+        name  = "Outbox__MaxPublishAttempts"
+        value = "10"
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
+          name  = "SignalR__Endpoint"
+          value = "https://${azurerm_signalr_service.this[0].hostname}"
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
+          name  = "SignalR__ManagedIdentityClientId"
+          value = var.core_worker_identity_client_id
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_notification_hubs ? [1] : []
+        content {
+          name  = "NotificationHubs__NamespaceName"
+          value = azurerm_notification_hub_namespace.this[0].name
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_notification_hubs ? [1] : []
+        content {
+          name  = "NotificationHubs__HubName"
+          value = azurerm_notification_hub.this[0].name
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_notification_hubs ? [1] : []
+        content {
+          name  = "NotificationHubs__ManagedIdentityClientId"
+          value = var.core_worker_identity_client_id
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_content_safety ? [1] : []
+        content {
+          name  = "ContentSafety__Endpoint"
+          value = azurerm_cognitive_account.content_safety[0].endpoint
+        }
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.core_worker_acr_pull]
+}
+
+resource "azurerm_role_assignment" "core_deploy_worker_container_app" {
+  count = var.core_worker_enabled ? 1 : 0
+
+  scope                            = azurerm_container_app.core_worker[0].id
   role_definition_name             = "Container Apps Contributor"
   principal_id                     = var.core_deploy_identity_principal_id
   skip_service_principal_aad_check = true
@@ -524,14 +763,49 @@ resource "azurerm_signalr_service" "this" {
   location                      = var.location
   resource_group_name           = var.resource_group_name
   public_network_access_enabled = true
+  local_auth_enabled            = false
   connectivity_logs_enabled     = true
   messaging_logs_enabled        = true
   service_mode                  = "Default"
   tags                          = var.tags
 
   sku {
-    name     = "Free_F1"
+    name     = var.environment == "prod" ? "Standard_S1" : "Free_F1"
     capacity = 1
+  }
+}
+
+resource "azurerm_role_assignment" "core_signalr_app_server" {
+  count = var.enable_signalr ? 1 : 0
+
+  scope                            = azurerm_signalr_service.this[0].id
+  role_definition_name             = "SignalR App Server"
+  principal_id                     = var.core_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_signalr_app_server" {
+  count = var.enable_signalr && var.core_worker_enabled ? 1 : 0
+
+  scope                            = azurerm_signalr_service.this[0].id
+  role_definition_name             = "SignalR App Server"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_monitor_diagnostic_setting" "signalr" {
+  count = var.enable_signalr ? 1 : 0
+
+  name                       = "diag-olga-signalr-${var.environment}"
+  target_resource_id         = azurerm_signalr_service.this[0].id
+  log_analytics_workspace_id = var.log_analytics_workspace_id
+
+  enabled_log {
+    category_group = "allLogs"
+  }
+
+  enabled_metric {
+    category = "AllMetrics"
   }
 }
 
@@ -542,7 +816,7 @@ resource "azurerm_notification_hub_namespace" "this" {
   resource_group_name = var.resource_group_name
   location            = var.location
   namespace_type      = "NotificationHub"
-  sku_name            = "Free"
+  sku_name            = var.environment == "prod" ? "Standard" : "Free"
   tags                = var.tags
 }
 
@@ -554,6 +828,31 @@ resource "azurerm_notification_hub" "this" {
   resource_group_name = var.resource_group_name
   location            = var.location
   tags                = var.tags
+}
+
+resource "azurerm_role_assignment" "core_worker_notification_sender" {
+  count = var.enable_notification_hubs ? 1 : 0
+
+  scope                            = azurerm_notification_hub.this[0].id
+  role_definition_name             = "Azure Notification Hubs Data Sender"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_monitor_diagnostic_setting" "notification_hub" {
+  count = var.enable_notification_hubs ? 1 : 0
+
+  name                       = "diag-olga-notification-hub-${var.environment}"
+  target_resource_id         = azurerm_notification_hub_namespace.this[0].id
+  log_analytics_workspace_id = var.log_analytics_workspace_id
+
+  enabled_log {
+    category_group = "allLogs"
+  }
+
+  enabled_metric {
+    category = "AllMetrics"
+  }
 }
 
 resource "azurerm_cognitive_account" "content_safety" {
@@ -568,6 +867,15 @@ resource "azurerm_cognitive_account" "content_safety" {
   local_auth_enabled            = false
   public_network_access_enabled = true
   tags                          = var.tags
+}
+
+resource "azurerm_role_assignment" "core_worker_content_safety_user" {
+  count = var.enable_content_safety ? 1 : 0
+
+  scope                            = azurerm_cognitive_account.content_safety[0].id
+  role_definition_name             = "Cognitive Services User"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
 }
 
 resource "azurerm_cognitive_account" "openai" {

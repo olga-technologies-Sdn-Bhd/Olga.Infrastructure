@@ -162,6 +162,12 @@ jobs:
       TF_VAR_enable_admin_static_web_app: "true"
       TF_VAR_admin_static_web_app_location: eastasia
       TF_VAR_admin_static_web_app_sku_tier: ${{ needs.quality.outputs.environment == 'prd' && 'Standard' || 'Free' }}
+      TF_VAR_enable_service_bus: ${{ vars.ENABLE_SERVICE_BUS }}
+      TF_VAR_enable_signalr: ${{ vars.ENABLE_SIGNALR }}
+      TF_VAR_enable_notification_hubs: ${{ vars.ENABLE_NOTIFICATION_HUBS }}
+      TF_VAR_enable_content_safety: ${{ vars.ENABLE_CONTENT_SAFETY }}
+      TF_VAR_core_authentication_enforced: ${{ vars.CORE_AUTHENTICATION_ENFORCED }}
+      TF_VAR_core_worker_min_replicas: ${{ vars.CORE_WORKER_MIN_REPLICAS }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
     steps:
@@ -183,7 +189,10 @@ jobs:
           for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID \
             TFSTATE_RESOURCE_GROUP TFSTATE_STORAGE_ACCOUNT TFSTATE_CONTAINER TFSTATE_KEY \
             TF_VAR_tenant_id TF_VAR_location TF_VAR_owner TF_VAR_cost_center TF_VAR_expiry_date \
-            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity; do
+            TF_VAR_budget_amount_usd TF_VAR_budget_alert_emails TF_VAR_external_identity \
+            TF_VAR_enable_service_bus TF_VAR_enable_signalr TF_VAR_enable_notification_hubs \
+            TF_VAR_enable_content_safety TF_VAR_core_authentication_enforced \
+            TF_VAR_core_worker_min_replicas; do
             if [[ -z "${!name:-}" ]]; then
               echo "::error::Required plan environment variable $name is not configured."
               exit 1
@@ -431,11 +440,15 @@ jobs:
           nlp_subject=$(terraform output -raw nlp_deployment_oidc_subject)
           database_client_id=$(terraform output -raw database_deployment_identity_client_id)
           database_subject=$(terraform output -raw database_deployment_oidc_subject)
+          core_worker_name=$(terraform output -json core_worker_container_app_name | jq -r '. // "disabled"')
+          core_worker_identity=$(terraform output -raw core_worker_identity_client_id)
           {
             echo
             echo "### Application GitHub OIDC"
             echo "- Core \`AZURE_CLIENT_ID\`: \`$core_client_id\`"
             echo "- Core subject: \`$core_subject\`"
+            echo "- Core worker Container App: \`$core_worker_name\`"
+            echo "- Core worker managed identity client ID: \`$core_worker_identity\`"
             echo "- NLP \`AZURE_CLIENT_ID\`: \`$nlp_client_id\`"
             echo "- NLP subject: \`$nlp_subject\`"
             echo "- Database \`AZURE_CLIENT_ID\`: \`$database_client_id\`"

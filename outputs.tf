@@ -39,6 +39,63 @@ output "nlp_worker_identity_client_id" {
   value = module.platform.nlp_worker_identity_client_id
 }
 
+output "core_worker_container_app_name" {
+  description = "Dedicated Core worker Container App updated by the Core deployment workflow, or null when Service Bus is disabled."
+  value       = module.platform.core_worker_container_app_name
+}
+
+output "core_worker_identity_client_id" {
+  description = "User-assigned managed identity client ID used by the Core worker for Azure SDK authentication."
+  value       = module.platform.core_worker_identity_client_id
+}
+
+output "servicebus_fully_qualified_namespace" {
+  description = "Non-secret Service Bus namespace host supplied as ServiceBus__FullyQualifiedNamespace."
+  value       = module.data.servicebus_fully_qualified_namespace
+}
+
+output "servicebus_integration_topic_name" {
+  value = var.enable_service_bus ? "integration-events" : null
+}
+
+output "servicebus_core_nlp_completion_subscription_name" {
+  value = var.enable_service_bus ? "core-nlp-completions" : null
+}
+
+output "servicebus_content_scan_queue_name" {
+  value = var.enable_service_bus ? "content-scan" : null
+}
+
+output "storage_blob_endpoint" {
+  description = "Private-network Blob service endpoint supplied to the Core API and Core worker."
+  value       = module.data.storage_blob_endpoint
+}
+
+output "signalr_endpoint" {
+  description = "Non-secret HTTPS SignalR endpoint, or null when enable_signalr is false."
+  value       = module.platform.signalr_endpoint
+}
+
+output "notification_hub_namespace_name" {
+  description = "Notification Hubs namespace name, or null when enable_notification_hubs is false."
+  value       = module.platform.notification_hub_namespace_name
+}
+
+output "notification_hub_name" {
+  description = "Notification Hub name, or null when enable_notification_hubs is false."
+  value       = module.platform.notification_hub_name
+}
+
+output "notification_hub_apns_key_vault_secret_name" {
+  description = "Reserved Key Vault secret name for the manually protected APNS credential; no secret value is managed or output by Terraform."
+  value       = var.enable_notification_hubs ? "notification-hubs-apns-credential" : null
+}
+
+output "notification_hub_fcm_v1_key_vault_secret_name" {
+  description = "Reserved Key Vault secret name for the manually protected FCM v1 credential; no secret value is managed or output by Terraform."
+  value       = var.enable_notification_hubs ? "notification-hubs-fcm-v1-credential" : null
+}
+
 output "admin_static_web_app_name" {
   description = "Azure Static Web App resource that hosts the admin portal, or null when disabled."
   value       = module.platform.admin_static_web_app_name
@@ -136,17 +193,17 @@ output "EXPO_PUBLIC_OLGA_API_SCOPE" {
 }
 
 output "AzureAd__Instance" {
-  description = "Future Core API Microsoft.Identity.Web instance; not currently connected to authentication middleware."
+  description = "Core API Microsoft Entra External ID instance."
   value       = "https://${var.external_identity.tenant_subdomain}.ciamlogin.com/"
 }
 
 output "AzureAd__TenantId" {
-  description = "Future Core API External ID tenant ID."
+  description = "Core API External ID tenant ID."
   value       = var.external_identity.tenant_id
 }
 
 output "AzureAd__ClientId" {
-  description = "Future Core API application client ID."
+  description = "Core API application client ID."
   value       = var.external_identity.api_client_id
 }
 
@@ -160,7 +217,12 @@ output "AzureAd__RequiredScope" {
   value       = "access_as_user"
 }
 
+output "AzureAd__RequiredRoles" {
+  description = "Optional External ID application roles required by the Core API."
+  value       = var.external_identity_required_roles
+}
+
 output "AzureAd__Issuer" {
-  description = "Future Core API v2 token issuer; confirm it against the environment's OpenID discovery metadata before enabling enforcement."
+  description = "Core API v2 token issuer; confirm it against the environment's OpenID discovery metadata before enabling enforcement."
   value       = "https://${var.external_identity.tenant_id}.ciamlogin.com/${var.external_identity.tenant_id}/v2.0"
 }

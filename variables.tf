@@ -199,6 +199,12 @@ variable "core_api_image" {
   default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
 }
 
+variable "core_worker_image" {
+  description = "Core worker bootstrap image used when its Container App is created. The Core delivery workflow owns later image revisions."
+  type        = string
+  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+}
+
 variable "nlp_api_image" {
   description = "NLP API bootstrap image used when the Container App is created. The NLP delivery workflow owns later image revisions."
   type        = string
@@ -240,6 +246,37 @@ variable "core_api_min_replicas" {
       (var.environment == "dev" && contains([0, 1], var.core_api_min_replicas))
     )
     error_message = "core_api_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
+}
+
+variable "core_worker_min_replicas" {
+  description = "Minimum Core worker replicas. Defaults to 1 in dev and 2 in prod when Service Bus is enabled. Dev may set 0 only when accepting paused outbox/content-scan processing."
+  type        = number
+  default     = null
+
+  validation {
+    condition = var.core_worker_min_replicas == null || (
+      (var.environment == "prod" && var.core_worker_min_replicas >= 2 && var.core_worker_min_replicas <= 5) ||
+      (var.environment == "dev" && contains([0, 1], var.core_worker_min_replicas))
+    )
+    error_message = "core_worker_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
+}
+
+variable "core_authentication_enforced" {
+  description = "Deployment gate confirming the selected Core API image validates External ID tokens and disables X-Member-Id/default-member identity selection. Production is blocked unless true."
+  type        = bool
+  default     = false
+}
+
+variable "external_identity_required_roles" {
+  description = "Non-secret External ID application-role values enforced by the Core API in addition to access_as_user. Leave empty until roles are defined and assigned in the external directory."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for role in var.external_identity_required_roles : length(trimspace(role)) > 0])
+    error_message = "external_identity_required_roles cannot contain blank values."
   }
 }
 
@@ -414,17 +451,19 @@ variable "enable_content_safety" {
 }
 
 variable "enable_signalr" {
-  type    = bool
-  default = false
+  description = "Provision Azure SignalR for managed realtime delivery. This is an explicit cost-bearing feature flag."
+  type        = bool
+  default     = false
 }
 
 variable "enable_notification_hubs" {
-  type    = bool
-  default = false
+  description = "Provision Notification Hubs resources and sender RBAC. APNS/FCM credentials are configured separately and never enter Terraform."
+  type        = bool
+  default     = false
 }
 
 variable "enable_service_bus" {
-  description = "Provision Service Bus Standard only when asynchronous messaging is being tested."
+  description = "Provision the Core integration topology and dedicated Core worker. Required in production."
   type        = bool
   default     = false
 }

@@ -356,11 +356,43 @@ resource "azurerm_servicebus_namespace" "this" {
   tags                = var.tags
 }
 
+resource "azurerm_servicebus_topic" "integration_events" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name                                    = "integration-events"
+  namespace_id                            = azurerm_servicebus_namespace.this[0].id
+  default_message_ttl                     = "P7D"
+  support_ordering                        = true
+  requires_duplicate_detection            = true
+  duplicate_detection_history_time_window = "PT1H"
+}
+
+resource "azurerm_servicebus_subscription" "core_nlp_completions" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name                                 = "core-nlp-completions"
+  topic_id                             = azurerm_servicebus_topic.integration_events[0].id
+  max_delivery_count                   = 5
+  lock_duration                        = "PT1M"
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
+resource "azurerm_servicebus_subscription_rule" "core_nlp_completions" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name            = "$Default"
+  subscription_id = azurerm_servicebus_subscription.core_nlp_completions[0].id
+  filter_type     = "SqlFilter"
+  sql_filter      = "event_type = 'NlpMatchRequestCompleted.v1'"
+}
+
 resource "azurerm_servicebus_queue" "work" {
-  for_each = var.enable_service_bus ? toset(["embedding", "content-scan", "notification", "privacy-retention", "outbox"]) : toset([])
+  for_each = var.enable_service_bus ? toset(["content-scan"]) : toset([])
 
   name                                    = each.value
   namespace_id                            = azurerm_servicebus_namespace.this[0].id
+  default_message_ttl                     = "P1D"
   max_delivery_count                      = 5
   lock_duration                           = "PT1M"
   dead_lettering_on_message_expiration    = true
@@ -370,9 +402,10 @@ resource "azurerm_servicebus_queue" "work" {
 
 locals {
   application_principals = {
-    core   = var.core_identity_principal_id
-    nlp    = var.nlp_identity_principal_id
-    worker = var.worker_identity_principal_id
+    core        = var.core_identity_principal_id
+    nlp         = var.nlp_identity_principal_id
+    nlp_worker  = var.worker_identity_principal_id
+    core_worker = var.core_worker_identity_principal_id
   }
   key_vault_principals = merge(local.application_principals, {
     database_migration = var.database_migration_identity_principal_id
@@ -388,29 +421,55 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "blob_data_contributor" {
-  for_each = local.application_principals
+resource "azurerm_role_assignment" "core_profile_image_blob_data_contributor" {
+  for_each = {
+    for pair in setproduct(
+      [var.core_identity_principal_id, var.core_worker_identity_principal_id],
+      ["profile-images-pending", "profile-images", "chat-files"]
+      ) : "${pair[0]}:${pair[1]}" => {
+      principal_id  = pair[0]
+      container_key = pair[1]
+    }
+  }
 
-  scope                            = azurerm_storage_account.this.id
+  scope                            = azapi_resource.container[each.value.container_key].id
   role_definition_name             = "Storage Blob Data Contributor"
-  principal_id                     = each.value
+  principal_id                     = each.value.principal_id
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "servicebus_data_sender" {
-  for_each = var.enable_service_bus ? local.application_principals : {}
+resource "azurerm_role_assignment" "core_worker_integration_sender" {
+  count = var.enable_service_bus ? 1 : 0
 
-  scope                            = azurerm_servicebus_namespace.this[0].id
+  scope                            = azurerm_servicebus_topic.integration_events[0].id
   role_definition_name             = "Azure Service Bus Data Sender"
-  principal_id                     = each.value
+  principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "servicebus_data_receiver" {
-  for_each = var.enable_service_bus ? toset([var.nlp_identity_principal_id, var.worker_identity_principal_id]) : toset([])
+resource "azurerm_role_assignment" "core_worker_nlp_completion_receiver" {
+  count = var.enable_service_bus ? 1 : 0
 
-  scope                            = azurerm_servicebus_namespace.this[0].id
+  scope                            = azurerm_servicebus_subscription.core_nlp_completions[0].id
   role_definition_name             = "Azure Service Bus Data Receiver"
-  principal_id                     = each.value
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_content_scan_sender" {
+  count = var.enable_service_bus ? 1 : 0
+
+  scope                            = azurerm_servicebus_queue.work["content-scan"].id
+  role_definition_name             = "Azure Service Bus Data Sender"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_content_scan_receiver" {
+  count = var.enable_service_bus ? 1 : 0
+
+  scope                            = azurerm_servicebus_queue.work["content-scan"].id
+  role_definition_name             = "Azure Service Bus Data Receiver"
+  principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }

@@ -39,4 +39,5 @@ variable "enable_service_bus" { type = bool }
 variable "core_identity_principal_id" { type = string }
 variable "nlp_identity_principal_id" { type = string }
 variable "worker_identity_principal_id" { type = string }
+variable "core_worker_identity_principal_id" { type = string }
 variable "database_migration_identity_principal_id" { type = string }
