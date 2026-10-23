@@ -404,7 +404,7 @@ locals {
   application_principals = {
     core        = var.core_identity_principal_id
     nlp         = var.nlp_identity_principal_id
-    nlp_worker  = var.worker_identity_principal_id
+    worker      = var.worker_identity_principal_id
     core_worker = var.core_worker_identity_principal_id
   }
   key_vault_principals = merge(local.application_principals, {
@@ -422,15 +422,22 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
 }
 
 resource "azurerm_role_assignment" "core_profile_image_blob_data_contributor" {
-  for_each = {
-    for pair in setproduct(
-      [var.core_identity_principal_id, var.core_worker_identity_principal_id],
-      ["profile-images-pending", "profile-images", "chat-files"]
-      ) : "${pair[0]}:${pair[1]}" => {
-      principal_id  = pair[0]
-      container_key = pair[1]
+  for_each = merge(
+    {
+      for container_key in ["profile-images-pending", "profile-images", "chat-files"] :
+      "core:${container_key}" => {
+        principal_id  = var.core_identity_principal_id
+        container_key = container_key
+      }
+    },
+    {
+      for container_key in ["profile-images-pending", "profile-images", "chat-files"] :
+      "core_worker:${container_key}" => {
+        principal_id  = var.core_worker_identity_principal_id
+        container_key = container_key
+      }
     }
-  }
+  )
 
   scope                            = azapi_resource.container[each.value.container_key].id
   role_definition_name             = "Storage Blob Data Contributor"
