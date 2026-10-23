@@ -17,6 +17,8 @@
 - Service Bus contains only entities with a current consumer: `integration-events`, the filtered `core-nlp-completions` subscription, and `content-scan`. RBAC is entity-scoped; Core API and NLP identities do not receive namespace-wide messaging roles.
 - Service Bus, SignalR, Notification Hubs, and Content Safety remain explicit cost-bearing feature
   flags; the reviewed development and production examples enable all four for the standard chat
-  baseline. Credentials remain outside Terraform state.
+  baseline. SignalR and Service Bus remain in Malaysia West; because Notification Hubs and Content
+  Safety are unavailable there, only those two services use Southeast Asia. Credentials remain
+  outside Terraform state.
 - Entra External ID Email OTP, Google, and Apple protect the mobile login experience only in the current Core build. Infrastructure supplies the API validation contract and blocks production unless an operator attests that the selected image enforces it; see `docs/SECURITY_DEBT.md`.
 

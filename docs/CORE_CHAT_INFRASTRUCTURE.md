@@ -10,6 +10,8 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 4. `ProfileImageUploaded.v1` is sent to `content-scan`; the Core worker validates and transforms the private pending blob. This is image validation, not a complete malware/content-safety pipeline.
 5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
 
+The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their managed-identity RBAC, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
+
 Terraform intentionally does not create `embedding`, `notification`, `privacy-retention`, or `outbox` queues: no current Core or NLP process consumes them. Add an entity and entity-scoped RBAC only when the consuming code and deployment setting exist.
 
 The current NLP worker writes `NlpMatchRequestCompleted.v1` to the NLP database outbox but does not yet contain a Service Bus publisher. Consequently, the filtered subscription is correctly provisioned but will not receive NLP completion messages until the NLP application adds a publisher using `MessageId=outbox_event_id`. Grant that publisher identity sender access only to `integration-events` when the code exists; do not broaden NLP access in advance.

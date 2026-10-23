@@ -1,3 +1,10 @@
+locals {
+  # Malaysia West does not offer Notification Hubs or Azure AI Content Safety.
+  # Keep the primary workload there and place only these unsupported services in
+  # the nearest shared supported Azure region.
+  chat_auxiliary_location = var.location == "malaysiawest" ? "southeastasia" : var.location
+}
+
 resource "azurerm_container_app_environment" "this" {
   name                       = "cae-olga-${var.environment}-${var.suffix}"
   location                   = var.location
@@ -814,7 +821,7 @@ resource "azurerm_notification_hub_namespace" "this" {
 
   name                = "nhns-olga-${var.suffix}"
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = local.chat_auxiliary_location
   namespace_type      = "NotificationHub"
   sku_name            = var.environment == "prod" ? "Standard" : "Free"
   tags                = var.tags
@@ -826,7 +833,7 @@ resource "azurerm_notification_hub" "this" {
   name                = "nh-olga-${var.environment}"
   namespace_name      = azurerm_notification_hub_namespace.this[0].name
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = local.chat_auxiliary_location
   tags                = var.tags
 }
 
@@ -859,7 +866,7 @@ resource "azurerm_cognitive_account" "content_safety" {
   count = var.enable_content_safety ? 1 : 0
 
   name                          = "cs-olga-${var.suffix}"
-  location                      = var.location
+  location                      = local.chat_auxiliary_location
   resource_group_name           = var.resource_group_name
   kind                          = "ContentSafety"
   sku_name                      = var.environment == "prod" ? "S0" : "F0"
