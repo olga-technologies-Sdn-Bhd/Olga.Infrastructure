@@ -252,6 +252,16 @@ resource "azapi_update_resource" "blob_service" {
   }
 }
 
+resource "azurerm_security_center_storage_defender" "this" {
+  count = var.enable_malware_scanning ? 1 : 0
+
+  storage_account_id                          = azurerm_storage_account.this.id
+  override_subscription_settings_enabled      = true
+  malware_scanning_on_upload_enabled           = true
+  malware_scanning_on_upload_cap_gb_per_month = var.malware_scanning_monthly_cap_gb
+  sensitive_data_discovery_enabled             = false
+}
+
 resource "azapi_resource" "container" {
   for_each = toset([
     "chat-files",

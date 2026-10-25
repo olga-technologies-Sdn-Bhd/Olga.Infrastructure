@@ -16,7 +16,7 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - Core and NLP APIs with external HTTPS ingress
 - Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Dedicated Core outbox/completion/content-scan worker with its own managed identity when Service Bus is enabled
-- Standard chat services using Service Bus, SignalR, Notification Hubs, and Content Safety; optional Azure OpenAI, API Management, and Static Web Apps
+- Standard chat services using Service Bus, SignalR, Notification Hubs, Content Safety, and Defender for Storage on-upload malware scanning; optional Azure OpenAI, API Management, and Static Web Apps
 
 ## Prerequisites
 

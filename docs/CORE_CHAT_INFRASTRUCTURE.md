@@ -7,8 +7,9 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 1. Core API writes business changes and `ops.outbox_event` in one PostgreSQL transaction.
 2. The Core worker polls the outbox and sends each event to the `integration-events` topic with `MessageId=outbox_event_id`, enabling Service Bus duplicate suppression. After that durable publish succeeds, chat events are sent to SignalR on a best-effort basis; clients must recover a missed realtime event through REST/sync.
 3. `core-nlp-completions` receives only `event_type = 'NlpMatchRequestCompleted.v1'` and the Core worker applies the completion to Core projections. Terraform creates the selective rule first, then idempotently removes Azure's generated catch-all `$Default` rule so first deployment does not require a state import.
-4. `ProfileImageUploaded.v1` is sent to `content-scan`; the Core worker validates and transforms the private pending blob. This is image validation, not a complete malware/content-safety pipeline.
-5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates and a required-at-startup flag are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
+4. `ProfileImageUploaded.v1` and `ChatFileUploaded.v1` are sent to `content-scan`. The Core worker waits for Defender for Storage's on-upload blob-index verdict before decoding any image, retries while the verdict is pending, and quarantines malicious or failed scans.
+5. Malware-clean images are safely decoded, bounded, orientation-normalized, metadata-stripped, and sent to Azure AI Content Safety. Unsafe images are rejected; only malware-clean and moderation-approved chat files become downloadable.
+6. The standard deployment provisions SignalR, Notification Hubs, Content Safety, and Defender for Storage. SignalR coordinates and required-at-startup flags are injected into the Core API and Core worker. Notification Hub sending uses a Key Vault-backed send-only SAS connection; APNS/FCM provider credentials remain a protected operator step.
 
 The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their access controls, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
 
@@ -18,22 +19,22 @@ Terraform intentionally does not create `embedding`, `notification`, `privacy-re
 
 The current NLP worker writes `NlpMatchRequestCompleted.v1` to the NLP database outbox but does not yet contain a Service Bus publisher. Consequently, the filtered subscription is correctly provisioned but will not receive NLP completion messages until the NLP application adds a publisher using `MessageId=outbox_event_id`. Grant that publisher identity sender access only to `integration-events` when the code exists; do not broaden NLP access in advance.
 
-The current Core source hosts the SignalR hub and publishes committed chat events from the Core worker. Notification Hubs still has no application sender; enabling it provisions the secure service boundary and deployment settings but does not create push behavior. No unused notification queue is provisioned.
+The current Core source hosts the SignalR hub, publishes committed chat events, and sends eligible push notifications from the Core worker. Notification delivery still requires APNS and/or FCM provider credentials on the Notification Hub. No unused notification queue is provisioned.
 
 ## Dependency and configuration matrix
 
 | Workload setting/output | Supplied by | Purpose |
 | --- | --- | --- |
 | `ConnectionStrings__PostgreSql` | Key Vault `postgresql-connection` reference | API/worker database access without exposing the value in tfvars or outputs |
-| `IdentityProtection__MasterKeyBase64` | Key Vault `identity-protection-master-key` reference | Core API ciphertext protection |
-| `Storage__BlobServiceEndpoint` / `storage_blob_endpoint` | private Storage account endpoint | Private profile-image access; `chat-files` remains private and unused |
+| `IdentityProtection__MasterKeyBase64` | Key Vault `identity-protection-master-key` reference | Core API and worker ciphertext protection, including push-token decryption |
+| `Storage__BlobServiceEndpoint` / `storage_blob_endpoint` | private Storage account endpoint | Private profile-image and chat-attachment access |
 | `Storage__ManagedIdentityClientId` | Core API or Core worker user-assigned identity | Keyless Blob authentication |
 | `Storage__PendingProfileImagesContainerName` | literal `profile-images-pending` | Reconciles the application default/name mismatch |
 | `ServiceBus__FullyQualifiedNamespace` / `servicebus_fully_qualified_namespace` | Service Bus namespace | Managed-identity Service Bus client |
 | `ServiceBus__ManagedIdentityClientId` | dedicated Core worker identity | Keyless Service Bus authentication |
 | `ServiceBus__IntegrationTopicName` | `integration-events` topic | Transactional outbox publication |
 | `ServiceBus__NlpCompletionSubscriptionName` | filtered `core-nlp-completions` subscription | NLP completion consumption |
-| `ServiceBus__ContentScanQueueName` | `content-scan` queue | Profile-image work |
+| `ServiceBus__ContentScanQueueName` | `content-scan` queue | Profile-image and chat-attachment malware/moderation work |
 | `AzureAd__Instance` / `Authority` | External ID environment input | Token authority |
 | `AzureAd__TenantId`, `ClientId`, `Audience`, `Issuer` | External ID environment input | Exact token validation boundary |
 | `AzureAd__RequiredScope` | literal `access_as_user` | Delegated API permission |
@@ -43,12 +44,13 @@ The current Core source hosts the SignalR hub and publishes committed chat event
 | `SignalR__Required` | literal `true` when SignalR is enabled | Fails workload startup instead of silently degrading to an in-process or Service-Bus-only path |
 | `SignalR__ManagedIdentityClientId` | Core API or Core worker user-assigned identity | Keyless SignalR authentication for connection handling and committed-event publication |
 | `Outbox__Enabled` | literal `true` | Keeps transactional outbox publication active on every Core worker revision |
-| `NotificationHubs__NamespaceName`, `HubName` | optional Notification Hubs resources | Push routing coordinates |
-| Future `NotificationHubs__ConnectionString` | `notification_hub_send_connection_secret_uri` output referencing the `core-worker-send` authorization rule | Send-only SAS authentication for the later Core integration; current Container Apps are not modified |
+| `Push__NotificationHubName` | optional Notification Hub resource | Push routing coordinate |
+| `Push__NotificationHubConnectionString` | Key Vault reference to the `core-worker-send` authorization rule | Send-only SAS authentication used by the Core worker |
+| `ContentSafety__Endpoint`, `ContentSafety__Required` | Content Safety resource and enablement flag | Managed-identity image moderation with fail-closed startup validation |
 | `core_worker_container_app_name` | dedicated Core worker Container App | Core image deployment target |
 | `core_worker_identity_client_id` | dedicated Core worker identity | Core worker Azure SDK client ID |
 
-The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. When SignalR is enabled, the Core API receives `SignalR App Server` for connection handling and the Core worker receives `SignalR REST API Owner` for Management SDK publication. Notification Hubs does not provide managed-identity data-plane authorization, so Terraform prepares a dedicated send-only SAS rule and private Key Vault secret for the later Core integration without modifying the current Container Apps. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
+The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. When SignalR is enabled, the Core API receives `SignalR App Server` for connection handling and the Core worker receives `SignalR REST API Owner` for Management SDK publication. Notification Hubs does not provide managed-identity data-plane authorization, so Terraform injects a dedicated send-only SAS rule through a private Key Vault reference. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
 
 ## Availability and scaling
 
@@ -83,7 +85,7 @@ The infrastructure boundary for the non-Phase-2 chat backlog is covered as follo
 | CHAT-13 failed-message and retry states | Service Bus retry/dead-letter infrastructure is provided for backend events. User-visible retry state belongs to Core and mobile clients. |
 | CHAT-14 basic chat interface | No additional Azure infrastructure is required. |
 
-SignalR, Notification Hubs, and Content Safety are provisioned before their consumers so the Core and mobile implementations can integrate against stable resource coordinates. Provisioning alone does not complete CHAT-01, CHAT-02, CHAT-04, or content-safety enforcement.
+SignalR, Notification Hubs, Content Safety, and Defender for Storage are provisioned with the Core consumers. APNS/FCM provider credentials remain required before push delivery can succeed.
 
 ## APNS and FCM credentials
 
@@ -96,12 +98,12 @@ For each environment, a protected operator must:
 
 1. Store the APNS token credential and FCM v1 service-account credential under those names in that environment's Key Vault. Never put them in tfvars, GitHub variables, plan summaries, outputs, or source.
 2. Configure the matching Notification Hub through an approved protected credential procedure (Portal or a separately reviewed secret-consuming workflow). Provider limitations mean this remains outside Terraform state.
-3. During the later Core integration, add a Container App Key Vault reference using `notification_hub_send_connection_secret_uri`, then send a non-sensitive test notification without exposing the connection string.
+3. Deploy the Core worker, which consumes the Key Vault-backed send-only connection through `Push__NotificationHubConnectionString`, then send a non-sensitive test notification without exposing the connection string.
 4. Verify failed-send and invalid-token diagnostics and alerts, and remove invalid device registrations in the application workflow.
 
 Use separate APNS keys/FCM projects and Key Vault secrets for dev and production. Rotation must update Key Vault and the provider configuration without revealing values in logs.
 
 ## Phase 2 files
 
-`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. The Core worker receives container-scoped managed-identity access; the Core API retains its pre-existing storage-account assignment pending a separately reviewed RBAC migration. No attachment endpoint, public download URL, or delivery behavior is added in this phase. A later attachment design must add quarantine, malware/content-safety verdict enforcement, authorized short-lived download issuance, retention/deletion, and audit evidence before attachments are exposed. Enabling Azure Content Safety alone does not complete that boundary.
+`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. The Core worker receives container-scoped managed-identity access; the Core API retains its pre-existing storage-account assignment pending a separately reviewed RBAC migration. The API streams authorized downloads and never returns a SAS URL. Downloads remain blocked until Defender for Storage reports a clean malware verdict and, for images, Azure AI Content Safety approves the normalized image. Rejected, failed, and timed-out scans remain quarantined.
 

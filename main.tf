@@ -27,6 +27,11 @@ resource "terraform_data" "production_readiness" {
       condition     = (!var.enable_signalr && !var.enable_notification_hubs && !var.enable_content_safety) || var.enable_service_bus
       error_message = "SignalR, Notification Hubs, and Content Safety require enable_service_bus=true so the Core worker is deployed for realtime publication and asynchronous processing."
     }
+
+    precondition {
+      condition     = !var.enable_content_safety || var.enable_malware_scanning
+      error_message = "Content Safety requires enable_malware_scanning=true so untrusted images are malware-scanned before decoding and moderation."
+    }
   }
 }
 
@@ -149,6 +154,8 @@ module "data" {
   postgres_entra_admin                     = try(local.postgres_access.entra_admin, null)
   postgres_firewall_rules                  = try(local.postgres_access.firewall_rules, {})
   enable_service_bus                       = var.enable_service_bus
+  enable_malware_scanning                  = var.enable_malware_scanning
+  malware_scanning_monthly_cap_gb          = var.malware_scanning_monthly_cap_gb
   core_identity_principal_id               = module.foundation.core_identity_principal_id
   nlp_identity_principal_id                = module.foundation.nlp_identity_principal_id
   worker_identity_principal_id             = module.foundation.worker_identity_principal_id

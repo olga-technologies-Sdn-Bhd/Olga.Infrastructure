@@ -27,6 +27,7 @@ enable_service_bus       = true
 enable_signalr           = true
 enable_notification_hubs = true
 enable_content_safety    = true
+enable_malware_scanning  = true
 
 # The current Core API still uses the temporary X-Member-Id path. Keep this false
 # until the deployed image actually enforces External ID authentication.

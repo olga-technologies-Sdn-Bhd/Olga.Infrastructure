@@ -451,6 +451,23 @@ variable "enable_content_safety" {
   default     = true
 }
 
+variable "enable_malware_scanning" {
+  description = "Enable Defender for Storage on-upload malware scanning and blob-index result tags. Required for downloadable user uploads."
+  type        = bool
+  default     = true
+}
+
+variable "malware_scanning_monthly_cap_gb" {
+  description = "Maximum monthly GB scanned by Defender for Storage on-upload malware scanning."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.malware_scanning_monthly_cap_gb >= 1
+    error_message = "malware_scanning_monthly_cap_gb must be at least 1."
+  }
+}
+
 variable "enable_signalr" {
   description = "Provision Azure SignalR for managed realtime delivery. Enabled by default for the standard chat platform."
   type        = bool

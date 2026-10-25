@@ -389,6 +389,21 @@ resource "azurerm_container_app" "core_worker" {
     identity            = var.core_worker_identity_id
   }
 
+  secret {
+    name                = "identity-protection-master-key"
+    key_vault_secret_id = var.identity_master_key_secret_uri
+    identity            = var.core_worker_identity_id
+  }
+
+  dynamic "secret" {
+    for_each = var.enable_notification_hubs ? [1] : []
+    content {
+      name                = "notification-hub-send"
+      key_vault_secret_id = "${var.key_vault_uri}secrets/${azapi_resource.notification_hub_send_connection[0].name}"
+      identity            = var.core_worker_identity_id
+    }
+  }
+
   registry {
     server   = var.acr_login_server
     identity = var.core_worker_identity_id
@@ -454,6 +469,14 @@ resource "azurerm_container_app" "core_worker" {
         value = "profile-images"
       }
       env {
+        name  = "Storage__ChatFilesContainerName"
+        value = "chat-files"
+      }
+      env {
+        name        = "IdentityProtection__MasterKeyBase64"
+        secret_name = "identity-protection-master-key"
+      }
+      env {
         name  = "Outbox__Enabled"
         value = "true"
       }
@@ -485,24 +508,15 @@ resource "azurerm_container_app" "core_worker" {
       dynamic "env" {
         for_each = var.enable_notification_hubs ? [1] : []
         content {
-          name  = "NotificationHubs__NamespaceName"
-          value = azurerm_notification_hub_namespace.this[0].name
+          name        = "Push__NotificationHubConnectionString"
+          secret_name = "notification-hub-send"
         }
       }
       dynamic "env" {
         for_each = var.enable_notification_hubs ? [1] : []
         content {
-          name  = "NotificationHubs__HubName"
+          name  = "Push__NotificationHubName"
           value = azurerm_notification_hub.this[0].name
-        }
-      }
-      # Retained until the later Core integration to avoid revising the existing
-      # worker. Notification Hubs data-plane authentication uses SAS, not this ID.
-      dynamic "env" {
-        for_each = var.enable_notification_hubs ? [1] : []
-        content {
-          name  = "NotificationHubs__ManagedIdentityClientId"
-          value = var.core_worker_identity_client_id
         }
       }
       dynamic "env" {
@@ -511,6 +525,10 @@ resource "azurerm_container_app" "core_worker" {
           name  = "ContentSafety__Endpoint"
           value = azurerm_cognitive_account.content_safety[0].endpoint
         }
+      }
+      env {
+        name  = "ContentSafety__Required"
+        value = tostring(var.enable_content_safety)
       }
     }
   }
