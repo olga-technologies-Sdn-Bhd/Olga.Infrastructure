@@ -11,6 +11,7 @@ locals {
   core_api_min_replicas        = var.core_api_min_replicas != null ? var.core_api_min_replicas : (var.environment == "prod" ? 2 : 0)
   core_worker_min_replicas     = var.core_worker_min_replicas != null ? var.core_worker_min_replicas : (var.environment == "prod" ? 2 : 1)
   nlp_api_min_replicas         = var.nlp_api_min_replicas != null ? var.nlp_api_min_replicas : (var.environment == "prod" ? 2 : 0)
+  malware_scanning_enabled     = var.enable_malware_scanning && !(var.environment == "dev" && lower(var.location) == "malaysiawest")
   postgres_access              = try(var.postgres_access_by_environment[var.environment], null)
   platform_administrator_principal_ids = try(
     var.platform_administrator_principal_ids_by_environment[var.environment],

@@ -29,8 +29,8 @@ resource "terraform_data" "production_readiness" {
     }
 
     precondition {
-      condition     = var.environment != "prod" || var.enable_malware_scanning
-      error_message = "Production requires enable_malware_scanning=true so untrusted files are malware-scanned before processing or download."
+      condition     = var.environment != "prod" || (var.enable_malware_scanning && lower(var.location) != "malaysiawest")
+      error_message = "Production requires malware scanning in a Defender for Storage-supported Storage region; Malaysia West is not currently supported."
     }
   }
 }
@@ -154,7 +154,7 @@ module "data" {
   postgres_entra_admin                     = try(local.postgres_access.entra_admin, null)
   postgres_firewall_rules                  = try(local.postgres_access.firewall_rules, {})
   enable_service_bus                       = var.enable_service_bus
-  enable_malware_scanning                  = var.enable_malware_scanning
+  enable_malware_scanning                  = local.malware_scanning_enabled
   malware_scanning_monthly_cap_gb          = var.malware_scanning_monthly_cap_gb
   core_identity_principal_id               = module.foundation.core_identity_principal_id
   nlp_identity_principal_id                = module.foundation.nlp_identity_principal_id
@@ -237,7 +237,7 @@ module "platform" {
   azure_openai_embedding_deployment_name   = var.azure_openai_embedding_deployment_name
   azure_openai_embedding_capacity          = var.azure_openai_embedding_capacity
   enable_content_safety                    = var.enable_content_safety
-  enable_malware_scanning                  = var.enable_malware_scanning
+  enable_malware_scanning                  = local.malware_scanning_enabled
   enable_signalr                           = var.enable_signalr
   enable_notification_hubs                 = var.enable_notification_hubs
 }
