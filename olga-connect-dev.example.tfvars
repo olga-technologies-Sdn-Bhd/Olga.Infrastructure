@@ -17,7 +17,7 @@ azure_openai_embedding_capacity        = 10
 
 nlp_application_delivery_enabled        = true
 nlp_worker_application_delivery_enabled = true
-core_api_min_replicas                   = 0
+core_api_min_replicas                   = 1
 core_worker_min_replicas                = 1
 nlp_api_min_replicas                    = 0
 
