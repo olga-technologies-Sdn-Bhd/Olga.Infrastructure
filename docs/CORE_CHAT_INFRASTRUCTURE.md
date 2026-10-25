@@ -7,9 +7,9 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 1. Core API writes business changes and `ops.outbox_event` in one PostgreSQL transaction.
 2. The Core worker polls the outbox and sends each event to the `integration-events` topic with `MessageId=outbox_event_id`, enabling Service Bus duplicate suppression. After that durable publish succeeds, chat events are sent to SignalR on a best-effort basis; clients must recover a missed realtime event through REST/sync.
 3. `core-nlp-completions` receives only `event_type = 'NlpMatchRequestCompleted.v1'` and the Core worker applies the completion to Core projections. Terraform creates the selective rule first, then idempotently removes Azure's generated catch-all `$Default` rule so first deployment does not require a state import.
-4. `ProfileImageUploaded.v1` and `ChatFileUploaded.v1` are sent to `content-scan`. The Core worker waits for Defender for Storage's on-upload blob-index verdict before decoding any image, retries while the verdict is pending, and quarantines malicious or failed scans.
+4. `ProfileImageUploaded.v1` and `ChatFileUploaded.v1` are sent to `content-scan`. Where Defender for Storage is supported and enabled, the Core worker waits for its on-upload blob-index verdict before decoding any image, retries while the verdict is pending, and quarantines malicious or failed scans.
 5. Malware-clean images are safely decoded, bounded, orientation-normalized, metadata-stripped, and sent to Azure AI Content Safety. Unsafe images are rejected; only malware-clean and moderation-approved chat files become downloadable.
-6. The standard deployment provisions SignalR, Notification Hubs, Content Safety, and Defender for Storage. SignalR coordinates and required-at-startup flags are injected into the Core API and Core worker. Notification Hub sending uses a Key Vault-backed send-only SAS connection; APNS/FCM provider credentials remain a protected operator step.
+6. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. Defender for Storage is enabled only in supported Storage regions. SignalR coordinates and required-at-startup flags are injected into the Core API and Core worker. Notification Hub sending uses a Key Vault-backed send-only SAS connection; APNS/FCM provider credentials remain a protected operator step.
 
 The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their access controls, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
 
@@ -47,6 +47,7 @@ The current Core source hosts the SignalR hub, publishes committed chat events, 
 | `Push__NotificationHubName` | optional Notification Hub resource | Push routing coordinate |
 | `Push__NotificationHubConnectionString` | Key Vault reference to the `core-worker-send` authorization rule | Send-only SAS authentication used by the Core worker |
 | `ContentSafety__Endpoint`, `ContentSafety__Required` | Content Safety resource and enablement flag | Managed-identity image moderation with fail-closed startup validation |
+| `MalwareScanning__Required` | Defender enablement flag | Requires Defender blob-index malware verdicts; `false` is honored only by a Development runtime |
 | `core_worker_container_app_name` | dedicated Core worker Container App | Core image deployment target |
 | `core_worker_identity_client_id` | dedicated Core worker identity | Core worker Azure SDK client ID |
 
@@ -85,7 +86,7 @@ The infrastructure boundary for the non-Phase-2 chat backlog is covered as follo
 | CHAT-13 failed-message and retry states | Service Bus retry/dead-letter infrastructure is provided for backend events. User-visible retry state belongs to Core and mobile clients. |
 | CHAT-14 basic chat interface | No additional Azure infrastructure is required. |
 
-SignalR, Notification Hubs, Content Safety, and Defender for Storage are provisioned with the Core consumers. APNS/FCM provider credentials remain required before push delivery can succeed.
+SignalR, Notification Hubs, and Content Safety are provisioned with the Core consumers. Defender for Storage is also provisioned when the selected Storage region supports it. APNS/FCM provider credentials remain required before push delivery can succeed.
 
 ## APNS and FCM credentials
 
@@ -105,5 +106,5 @@ Use separate APNS keys/FCM projects and Key Vault secrets for dev and production
 
 ## Phase 2 files
 
-`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. The Core worker receives container-scoped managed-identity access; the Core API retains its pre-existing storage-account assignment pending a separately reviewed RBAC migration. The API streams authorized downloads and never returns a SAS URL. Downloads remain blocked until Defender for Storage reports a clean malware verdict and, for images, Azure AI Content Safety approves the normalized image. Rejected, failed, and timed-out scans remain quarantined.
+`chat-files` remains private, behind the Storage private endpoint, with public blob access and shared-key access disabled. The Core worker receives container-scoped managed-identity access; the Core API retains its pre-existing storage-account assignment pending a separately reviewed RBAC migration. The API streams authorized downloads and never returns a SAS URL. In supported regions, downloads remain blocked until Defender for Storage reports a clean malware verdict and, for images, Azure AI Content Safety approves the normalized image. Malaysia West development explicitly disables Defender because the resource provider does not support that Storage region; the runtime bypass is hard-limited to Development and image Content Safety remains enforced. Rejected, failed, and timed-out scans remain quarantined.
 

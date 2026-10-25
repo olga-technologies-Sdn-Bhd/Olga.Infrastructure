@@ -29,8 +29,8 @@ resource "terraform_data" "production_readiness" {
     }
 
     precondition {
-      condition     = !var.enable_content_safety || var.enable_malware_scanning
-      error_message = "Content Safety requires enable_malware_scanning=true so untrusted images are malware-scanned before decoding and moderation."
+      condition     = var.environment != "prod" || var.enable_malware_scanning
+      error_message = "Production requires enable_malware_scanning=true so untrusted files are malware-scanned before processing or download."
     }
   }
 }
@@ -237,6 +237,7 @@ module "platform" {
   azure_openai_embedding_deployment_name   = var.azure_openai_embedding_deployment_name
   azure_openai_embedding_capacity          = var.azure_openai_embedding_capacity
   enable_content_safety                    = var.enable_content_safety
+  enable_malware_scanning                  = var.enable_malware_scanning
   enable_signalr                           = var.enable_signalr
   enable_notification_hubs                 = var.enable_notification_hubs
 }

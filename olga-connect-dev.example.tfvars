@@ -27,7 +27,9 @@ enable_service_bus       = true
 enable_signalr           = true
 enable_notification_hubs = true
 enable_content_safety    = true
-enable_malware_scanning  = true
+# Defender for Storage is unavailable for Malaysia West storage accounts.
+# The Development-only worker bypasses malware tags while Content Safety remains enforced.
+enable_malware_scanning = false
 
 # The current Core API still uses the temporary X-Member-Id path. Keep this false
 # until the deployed image actually enforces External ID authentication.

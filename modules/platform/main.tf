@@ -530,6 +530,10 @@ resource "azurerm_container_app" "core_worker" {
         name  = "ContentSafety__Required"
         value = tostring(var.enable_content_safety)
       }
+      env {
+        name  = "MalwareScanning__Required"
+        value = tostring(var.enable_malware_scanning)
+      }
     }
   }
 

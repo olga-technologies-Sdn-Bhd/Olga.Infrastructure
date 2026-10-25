@@ -74,5 +74,6 @@ variable "nlp_model_version" { type = string }
 variable "azure_openai_embedding_deployment_name" { type = string }
 variable "azure_openai_embedding_capacity" { type = number }
 variable "enable_content_safety" { type = bool }
+variable "enable_malware_scanning" { type = bool }
 variable "enable_signalr" { type = bool }
 variable "enable_notification_hubs" { type = bool }
