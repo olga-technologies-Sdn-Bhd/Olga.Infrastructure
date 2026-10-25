@@ -34,7 +34,7 @@ enable_notification_hubs = true
 
 # Content Safety is not enabled until the Core worker consumes and enforces its
 # verdicts; local image validation alone is not an attachment-safety boundary.
-enable_content_safety = true
+enable_content_safety   = true
 enable_malware_scanning = true
 
 # Set true only for a Core image that validates External ID access tokens and
