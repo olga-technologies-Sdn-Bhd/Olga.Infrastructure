@@ -5,10 +5,10 @@ This document is the deployment contract for the OL-GA MVP Core API and the dedi
 ## Runtime flow
 
 1. Core API writes business changes and `ops.outbox_event` in one PostgreSQL transaction.
-2. The Core worker polls the outbox and sends each event to the `integration-events` topic with `MessageId=outbox_event_id`, enabling Service Bus duplicate suppression.
+2. The Core worker polls the outbox and sends each event to the `integration-events` topic with `MessageId=outbox_event_id`, enabling Service Bus duplicate suppression. After that durable publish succeeds, chat events are sent to SignalR on a best-effort basis; clients must recover a missed realtime event through REST/sync.
 3. `core-nlp-completions` receives only `event_type = 'NlpMatchRequestCompleted.v1'` and the Core worker applies the completion to Core projections. Terraform creates the selective rule first, then idempotently removes Azure's generated catch-all `$Default` rule so first deployment does not require a state import.
 4. `ProfileImageUploaded.v1` is sent to `content-scan`; the Core worker validates and transforms the private pending blob. This is image validation, not a complete malware/content-safety pipeline.
-5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
+5. The standard deployment provisions SignalR, Notification Hubs, and Content Safety. SignalR coordinates and a required-at-startup flag are injected into the Core API and Core worker: the API authenticates connections and the worker publishes committed outbox events. Provider credentials are never Terraform inputs or outputs.
 
 The primary workload remains in Malaysia West. Because Azure does not offer Notification Hubs or Azure AI Content Safety there, Terraform places only those two services in Southeast Asia, the nearest region supported by both services. Their access controls, diagnostics, and runtime configuration continue to reference the actual resources and require no additional deployment variables.
 
@@ -18,7 +18,7 @@ Terraform intentionally does not create `embedding`, `notification`, `privacy-re
 
 The current NLP worker writes `NlpMatchRequestCompleted.v1` to the NLP database outbox but does not yet contain a Service Bus publisher. Consequently, the filtered subscription is correctly provisioned but will not receive NLP completion messages until the NLP application adds a publisher using `MessageId=outbox_event_id`. Grant that publisher identity sender access only to `integration-events` when the code exists; do not broaden NLP access in advance.
 
-The current Core source also has no SignalR hub integration and no Notification Hubs sender. The feature flags provision secure service boundaries and deployment settings, but enabling them does not create realtime or push behavior. Add the application integrations before enabling either service in a live environment; no unused notification queue is provisioned.
+The current Core source hosts the SignalR hub and publishes committed chat events from the Core worker. Notification Hubs still has no application sender; enabling it provisions the secure service boundary and deployment settings but does not create push behavior. No unused notification queue is provisioned.
 
 ## Dependency and configuration matrix
 
@@ -40,13 +40,15 @@ The current Core source also has no SignalR hub integration and no Notification 
 | `AzureAd__RequiredRoles` | `external_identity_required_roles` | Optional application roles after directory roles exist |
 | `Authentication__RequireAuthenticatedUsers` | `core_authentication_enforced` | Production deployment gate and application enforcement signal |
 | `SignalR__Endpoint` / `signalr_endpoint` | SignalR resource | Managed realtime endpoint supplied to the Core API and Core worker; no connection string is emitted |
+| `SignalR__Required` | literal `true` when SignalR is enabled | Fails workload startup instead of silently degrading to an in-process or Service-Bus-only path |
 | `SignalR__ManagedIdentityClientId` | Core API or Core worker user-assigned identity | Keyless SignalR authentication for connection handling and committed-event publication |
+| `Outbox__Enabled` | literal `true` | Keeps transactional outbox publication active on every Core worker revision |
 | `NotificationHubs__NamespaceName`, `HubName` | optional Notification Hubs resources | Push routing coordinates |
 | Future `NotificationHubs__ConnectionString` | `notification_hub_send_connection_secret_uri` output referencing the `core-worker-send` authorization rule | Send-only SAS authentication for the later Core integration; current Container Apps are not modified |
 | `core_worker_container_app_name` | dedicated Core worker Container App | Core image deployment target |
 | `core_worker_identity_client_id` | dedicated Core worker identity | Core worker Azure SDK client ID |
 
-The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. The Core API and Core worker each receive `SignalR App Server` only when SignalR is enabled; the worker publishes committed chat events while the API owns authenticated connection handling. Notification Hubs does not provide managed-identity data-plane authorization, so Terraform prepares a dedicated send-only SAS rule and private Key Vault secret for the later Core integration without modifying the current Container Apps. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
+The Core deployment identity has `Container Apps Contributor` only on the Core API and Core worker. When SignalR is enabled, the Core API receives `SignalR App Server` for connection handling and the Core worker receives `SignalR REST API Owner` for Management SDK publication. Notification Hubs does not provide managed-identity data-plane authorization, so Terraform prepares a dedicated send-only SAS rule and private Key Vault secret for the later Core integration without modifying the current Container Apps. New Core worker Blob access is container-scoped. Existing storage-account Blob assignments for Core, NLP, and the NLP worker are preserved to avoid a disruptive permission migration and are recorded as security debt. Other new runtime roles are scoped to the resources or messaging entities used by their code. The NLP worker and its existing deployment path are otherwise unchanged.
 
 ## Availability and scaling
 

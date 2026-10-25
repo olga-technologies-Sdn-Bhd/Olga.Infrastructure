@@ -283,6 +283,13 @@ resource "azurerm_container_app" "core_api" {
       dynamic "env" {
         for_each = var.enable_signalr ? [1] : []
         content {
+          name  = "SignalR__Required"
+          value = "true"
+        }
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
           name  = "SignalR__Endpoint"
           value = "https://${azurerm_signalr_service.this[0].hostname}"
         }
@@ -348,7 +355,10 @@ resource "azurerm_container_app" "core_api" {
     }
   }
 
-  depends_on = [azurerm_role_assignment.core_acr_pull]
+  depends_on = [
+    azurerm_role_assignment.core_acr_pull,
+    azurerm_role_assignment.core_signalr_app_server,
+  ]
 }
 
 resource "azurerm_role_assignment" "core_deploy_container_app" {
@@ -444,8 +454,19 @@ resource "azurerm_container_app" "core_worker" {
         value = "profile-images"
       }
       env {
-        name  = "Outbox__MaxPublishAttempts"
+        name  = "Outbox__Enabled"
+        value = "true"
+      }
+      env {
+        name  = "Outbox__MaxAttempts"
         value = "10"
+      }
+      dynamic "env" {
+        for_each = var.enable_signalr ? [1] : []
+        content {
+          name  = "SignalR__Required"
+          value = "true"
+        }
       }
       dynamic "env" {
         for_each = var.enable_signalr ? [1] : []
@@ -498,7 +519,10 @@ resource "azurerm_container_app" "core_worker" {
     ignore_changes = [template[0].container[0].image]
   }
 
-  depends_on = [azurerm_role_assignment.core_worker_acr_pull]
+  depends_on = [
+    azurerm_role_assignment.core_worker_acr_pull,
+    azurerm_role_assignment.core_worker_signalr_rest_api_owner,
+  ]
 }
 
 resource "azurerm_role_assignment" "core_deploy_worker_container_app" {
@@ -793,11 +817,11 @@ resource "azurerm_role_assignment" "core_signalr_app_server" {
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "core_worker_signalr_app_server" {
+resource "azurerm_role_assignment" "core_worker_signalr_rest_api_owner" {
   count = var.enable_signalr && var.core_worker_enabled ? 1 : 0
 
   scope                            = azurerm_signalr_service.this[0].id
-  role_definition_name             = "SignalR App Server"
+  role_definition_name             = "SignalR REST API Owner"
   principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }
