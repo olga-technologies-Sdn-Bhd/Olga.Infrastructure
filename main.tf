@@ -29,8 +29,8 @@ resource "terraform_data" "production_readiness" {
     }
 
     precondition {
-      condition     = var.environment != "prod" || (var.enable_malware_scanning && lower(var.location) != "malaysiawest")
-      error_message = "Production requires malware scanning in a Defender for Storage-supported Storage region; Malaysia West is not currently supported."
+      condition     = var.environment != "prod" || local.malware_scanning_enabled
+      error_message = "Production requires malware scanning in a Defender for Storage-supported storage_location; Malaysia West is not currently supported."
     }
   }
 }
@@ -139,6 +139,7 @@ module "data" {
 
   resource_group_name                      = module.foundation.resource_group_name
   location                                 = var.location
+  storage_location                         = local.storage_location
   environment                              = var.environment
   suffix                                   = local.suffix
   tags                                     = local.tags

@@ -3,6 +3,9 @@
 # required subscription, ownership, budget, and image values for a full plan.
 environment = "dev"
 location    = "malaysiawest"
+# Keep compute and databases in Malaysia West while placing Blob Storage in a
+# region that supports Defender for Storage on-upload malware scanning.
+storage_location = "southeastasia"
 
 enable_admin_static_web_app   = true
 admin_static_web_app_location = "eastasia"
@@ -27,9 +30,8 @@ enable_service_bus       = true
 enable_signalr           = true
 enable_notification_hubs = true
 enable_content_safety    = true
-# Defender for Storage is unavailable for Malaysia West storage accounts.
-# The Development-only worker bypasses malware tags while Content Safety remains enforced.
-enable_malware_scanning = false
+# Mobile attachment downloads remain blocked until Defender reports a clean verdict.
+enable_malware_scanning = true
 
 # The current Core API still uses the temporary X-Member-Id path. Keep this false
 # until the deployed image actually enforces External ID authentication.

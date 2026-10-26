@@ -23,6 +23,17 @@ variable "location" {
   default     = "malaysiawest"
 }
 
+variable "storage_location" {
+  description = "Optional Azure region for Blob Storage. Development malware-scanned storage falls back from Malaysia West to Southeast Asia when omitted."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.storage_location == null ? true : trimspace(var.storage_location) != ""
+    error_message = "storage_location must be null or a non-empty Azure region name."
+  }
+}
+
 variable "external_identity" {
   description = "Non-secret Microsoft Entra External ID configuration for the active environment. Directory objects are bootstrapped separately; their identifiers are supplied here for mobile and future API configuration outputs."
   type = object({

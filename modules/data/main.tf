@@ -226,7 +226,7 @@ resource "azapi_resource" "identity_protection_master_key" {
 resource "azurerm_storage_account" "this" {
   name                            = "stolga${var.suffix}"
   resource_group_name             = var.resource_group_name
-  location                        = var.location
+  location                        = var.storage_location
   account_tier                    = "Standard"
   account_replication_type        = var.environment == "prod" ? "ZRS" : "LRS"
   min_tls_version                 = "TLS1_2"
