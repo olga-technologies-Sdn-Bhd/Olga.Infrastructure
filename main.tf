@@ -526,7 +526,7 @@ resource "azurerm_monitor_metric_alert" "signalr_server_connections" {
   name                = "alert-olga-prod-signalr-connections"
   resource_group_name = module.foundation.resource_group_name
   scopes              = [module.platform.signalr_service_id]
-  description         = "Azure SignalR has no active application-server connection."
+  description         = "Azure SignalR has no active connection."
   severity            = 1
   frequency           = "PT5M"
   window_size         = "PT15M"
@@ -534,7 +534,7 @@ resource "azurerm_monitor_metric_alert" "signalr_server_connections" {
 
   criteria {
     metric_namespace = "Microsoft.SignalRService/SignalR"
-    metric_name      = "ServerConnectionCount"
+    metric_name      = "ConnectionCount"
     aggregation      = "Average"
     operator         = "LessThan"
     threshold        = 1
