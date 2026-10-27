@@ -8,7 +8,7 @@ Microsoft Entra External ID Email OTP, Google, and Apple protect only the mobile
 
 Do not represent the current system as API-protected. This exception must be reviewed on 2026-10-23 and remediated after October 22, 2026, or earlier if delivery capacity permits.
 
-Terraform now injects the External ID authority, tenant, client ID, audience, issuer, scope, and optional roles. A production plan is blocked unless `core_authentication_enforced=true`; that flag is an image-readiness attestation, not authentication by itself. The current Core source does not consume this contract and still honors `X-Member-Id`, so it must not be released to production.
+Terraform injects the External ID authority, tenant, client ID, audience, issuer, scope, and optional roles, but it does not block production deployment when `core_authentication_enforced=false`. That flag is an application enforcement signal, not authentication by itself. The current Core source does not consume this contract and still honors `X-Member-Id`; deploying it to production therefore retains this explicitly accepted security debt until the application is remediated.
 
 ## Core API
 

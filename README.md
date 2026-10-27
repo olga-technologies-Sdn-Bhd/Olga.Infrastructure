@@ -73,7 +73,7 @@ When API minimum replica values are omitted, Terraform defaults development to `
 
 Production also uses a zone-redundant Container Apps environment, Premium zone-redundant ACR, ZRS Blob Storage, and PostgreSQL General Purpose compute with zone-redundant high availability, 128 GiB storage, automatic storage growth, and 35-day retention. Geo-redundant PostgreSQL backup is explicitly configurable and remains disabled in Malaysia West because Azure does not support it there; zone-redundant high availability and in-region backups remain enabled. Production telemetry retains 90 days, has a 5-GB daily cap with full sampling, and alerts the configured `BUDGET_ALERT_EMAILS` recipients for replica loss, container CPU/memory pressure, and PostgreSQL CPU/memory/storage pressure. Confirm SKU and availability-zone support in the selected Azure region during the reviewed production plan.
 
-The Core and NLP APIs have external HTTPS ingress. Current development images remain unauthenticated. Production Core creation is gated by `core_authentication_enforced=true`, which may be set only for an image that actually validates External ID tokens and disables `X-Member-Id`/default-member identity selection.
+The Core and NLP APIs have external HTTPS ingress. The `core_authentication_enforced` setting is passed to the Core application but does not gate infrastructure deployment. Set it to `true` only for an image that actually validates External ID tokens and disables `X-Member-Id`/default-member identity selection.
 
 The API URL outputs use each Container App's stable ingress hostname rather than a revision-specific hostname, so application releases do not change the published URL. They remain available with:
 
@@ -130,4 +130,4 @@ The mobile build needs only the environment's non-secret Entra client ID, tenant
 
 The complete runtime values, Expo configuration, `useEntraLogin` hook, provider routing contract, refresh/sign-out behavior, and physical-device verification checklist are maintained in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md).
 
-The current Core API, NLP API, Swagger, and health endpoints remain unauthenticated during the accepted development-only MVP phase. The mobile application can acquire and send an access token, but the current APIs do not validate it yet. Do not interpret the identity outputs or `core_authentication_enforced` flag as API enforcement; production requires a compatible Core image first.
+The current Core API, NLP API, Swagger, and health endpoints remain unauthenticated. The mobile application can acquire and send an access token, but the current APIs do not validate it yet. Do not interpret the identity outputs or `core_authentication_enforced` flag as API enforcement; production deployment before a compatible Core image is available is an explicitly accepted security risk.

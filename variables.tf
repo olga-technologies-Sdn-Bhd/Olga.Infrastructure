@@ -275,7 +275,7 @@ variable "core_worker_min_replicas" {
 }
 
 variable "core_authentication_enforced" {
-  description = "Deployment gate confirming the selected Core API image validates External ID tokens and disables X-Member-Id/default-member identity selection. Production is blocked unless true."
+  description = "Application setting indicating whether the selected Core API image enforces External ID authentication. Set true only when token validation is implemented and identity shortcuts are disabled."
   type        = bool
   default     = false
 }
