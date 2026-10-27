@@ -42,7 +42,7 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
 | `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
 | `EXTERNAL_IDENTITY` | Non-secret object containing the matching external tenant ID/subdomain/domain, redirect URI, mobile client ID, and API client ID |
-| `CORE_AUTHENTICATION_ENFORCED` | Optional readiness attestation. It defaults to `false`; set it to `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts. Production remains blocked until then. |
+| `CORE_AUTHENTICATION_ENFORCED` | Optional application enforcement signal. It defaults to `false` and does not block production infrastructure deployment. Set it to `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts. |
 
 Terraform enables Service Bus, SignalR, Notification Hubs, and Content Safety by default. It also selects one Core worker replica in dev and two in prd. No GitHub variables are required for those platform settings.
 

@@ -39,7 +39,7 @@ The current Core source hosts the SignalR hub, publishes committed chat events, 
 | `AzureAd__TenantId`, `ClientId`, `Audience`, `Issuer` | External ID environment input | Exact token validation boundary |
 | `AzureAd__RequiredScope` | literal `access_as_user` | Delegated API permission |
 | `AzureAd__RequiredRoles` | `external_identity_required_roles` | Optional application roles after directory roles exist |
-| `Authentication__RequireAuthenticatedUsers` | `core_authentication_enforced` | Production deployment gate and application enforcement signal |
+| `Authentication__RequireAuthenticatedUsers` | `core_authentication_enforced` | Application enforcement signal; it does not gate infrastructure deployment |
 | `SignalR__Endpoint` / `signalr_endpoint` | SignalR resource | Managed realtime endpoint supplied to the Core API and Core worker; no connection string is emitted |
 | `SignalR__Required` | literal `true` when SignalR is enabled | Fails workload startup instead of silently degrading to an in-process or Service-Bus-only path |
 | `SignalR__ManagedIdentityClientId` | Core API or Core worker user-assigned identity | Keyless SignalR authentication for connection handling and committed-event publication |
@@ -61,9 +61,9 @@ The Core deployment identity has `Container Apps Contributor` only on the Core A
 - Production alerts cover API/worker replica loss, Service Bus backlog and dead letters, SignalR system errors/server connections, Notification Hubs failures/invalid tokens, and PostgreSQL CPU/memory/storage pressure.
 - A database-outbox age/count alert requires the Core worker to emit an Application Insights metric. Azure Monitor cannot query an application table with a native resource metric; add that metric in Core before claiming outbox-backlog monitoring is complete.
 
-## Authentication release gate
+## Authentication release status
 
-Production plans fail unless `core_authentication_enforced=true`. Set it only when the selected Core image validates signature, issuer, audience, lifetime, `access_as_user`, and required roles; derives member identity from immutable token claims; and rejects both `X-Member-Id` identity selection and default-member fallback. The infrastructure injects the exact non-secret values but cannot make an application that ignores them secure. The current Core source still uses the insecure MVP selector, so it is not eligible for a production release.
+Terraform does not block production deployment when `core_authentication_enforced=false`. Set it to `true` only when the selected Core image validates signature, issuer, audience, lifetime, `access_as_user`, and required roles; derives member identity from immutable token claims; and rejects both `X-Member-Id` identity selection and default-member fallback. The infrastructure injects the exact non-secret values but cannot make an application that ignores them secure. The current Core source still uses the insecure MVP selector, so deploying it to production retains the security debt documented below.
 
 ## MVP infrastructure coverage
 
