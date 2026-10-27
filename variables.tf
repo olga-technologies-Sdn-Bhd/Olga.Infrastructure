@@ -24,7 +24,7 @@ variable "location" {
 }
 
 variable "storage_location" {
-  description = "Optional Azure region for Blob Storage. Development malware-scanned storage falls back from Malaysia West to Southeast Asia when omitted."
+  description = "Optional Azure region for Blob Storage. Malware-scanned storage falls back from Malaysia West to Southeast Asia when omitted."
   type        = string
   default     = null
 

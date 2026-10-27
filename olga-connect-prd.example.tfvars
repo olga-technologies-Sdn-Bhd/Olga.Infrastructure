@@ -3,6 +3,9 @@
 # required subscription, ownership, budget, and image values for a full plan.
 environment = "prod"
 location    = "malaysiawest"
+# Keep compute and databases in Malaysia West while placing Blob Storage in a
+# region that supports Defender for Storage on-upload malware scanning.
+storage_location = "southeastasia"
 
 enable_admin_static_web_app   = true
 admin_static_web_app_location = "eastasia"
