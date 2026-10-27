@@ -8,6 +8,7 @@ output "application_insights_connection_string" {
 output "acr_id" { value = azurerm_container_registry.this.id }
 output "acr_login_server" { value = azurerm_container_registry.this.login_server }
 output "core_identity_id" { value = azurerm_user_assigned_identity.core.id }
+output "core_identity_client_id" { value = azurerm_user_assigned_identity.core.client_id }
 output "core_identity_principal_id" { value = azurerm_user_assigned_identity.core.principal_id }
 output "nlp_identity_id" { value = azurerm_user_assigned_identity.nlp.id }
 output "nlp_identity_client_id" { value = azurerm_user_assigned_identity.nlp.client_id }
@@ -15,6 +16,9 @@ output "nlp_identity_principal_id" { value = azurerm_user_assigned_identity.nlp.
 output "worker_identity_id" { value = azurerm_user_assigned_identity.worker.id }
 output "worker_identity_client_id" { value = azurerm_user_assigned_identity.worker.client_id }
 output "worker_identity_principal_id" { value = azurerm_user_assigned_identity.worker.principal_id }
+output "core_worker_identity_id" { value = azurerm_user_assigned_identity.core_worker.id }
+output "core_worker_identity_client_id" { value = azurerm_user_assigned_identity.core_worker.client_id }
+output "core_worker_identity_principal_id" { value = azurerm_user_assigned_identity.core_worker.principal_id }
 output "database_migration_identity_id" { value = azurerm_user_assigned_identity.database_migration.id }
 output "database_migration_identity_principal_id" { value = azurerm_user_assigned_identity.database_migration.principal_id }
 output "core_deploy_identity_client_id" { value = azurerm_user_assigned_identity.core_deploy.client_id }

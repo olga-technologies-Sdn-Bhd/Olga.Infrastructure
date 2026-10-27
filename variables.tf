@@ -23,6 +23,17 @@ variable "location" {
   default     = "malaysiawest"
 }
 
+variable "storage_location" {
+  description = "Optional Azure region for Blob Storage. Development malware-scanned storage falls back from Malaysia West to Southeast Asia when omitted."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.storage_location == null ? true : trimspace(var.storage_location) != ""
+    error_message = "storage_location must be null or a non-empty Azure region name."
+  }
+}
+
 variable "external_identity" {
   description = "Non-secret Microsoft Entra External ID configuration for the active environment. Directory objects are bootstrapped separately; their identifiers are supplied here for mobile and future API configuration outputs."
   type = object({
@@ -199,6 +210,12 @@ variable "core_api_image" {
   default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
 }
 
+variable "core_worker_image" {
+  description = "Core worker bootstrap image used when its Container App is created. The Core delivery workflow owns later image revisions."
+  type        = string
+  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+}
+
 variable "nlp_api_image" {
   description = "NLP API bootstrap image used when the Container App is created. The NLP delivery workflow owns later image revisions."
   type        = string
@@ -240,6 +257,37 @@ variable "core_api_min_replicas" {
       (var.environment == "dev" && contains([0, 1], var.core_api_min_replicas))
     )
     error_message = "core_api_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
+}
+
+variable "core_worker_min_replicas" {
+  description = "Minimum Core worker replicas. Defaults to 1 in dev and 2 in prod when Service Bus is enabled. Dev may set 0 only when accepting paused outbox/content-scan processing."
+  type        = number
+  default     = null
+
+  validation {
+    condition = var.core_worker_min_replicas == null || (
+      (var.environment == "prod" && var.core_worker_min_replicas >= 2 && var.core_worker_min_replicas <= 5) ||
+      (var.environment == "dev" && contains([0, 1], var.core_worker_min_replicas))
+    )
+    error_message = "core_worker_min_replicas must be 0 or 1 in development, or between 2 and 5 in production."
+  }
+}
+
+variable "core_authentication_enforced" {
+  description = "Deployment gate confirming the selected Core API image validates External ID tokens and disables X-Member-Id/default-member identity selection. Production is blocked unless true."
+  type        = bool
+  default     = false
+}
+
+variable "external_identity_required_roles" {
+  description = "Non-secret External ID application-role values enforced by the Core API in addition to access_as_user. Leave empty until roles are defined and assigned in the external directory."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for role in var.external_identity_required_roles : length(trimspace(role)) > 0])
+    error_message = "external_identity_required_roles cannot contain blank values."
   }
 }
 
@@ -335,8 +383,26 @@ variable "apim_publisher_email" {
 }
 
 variable "enable_admin_static_web_app" {
-  type    = bool
-  default = false
+  description = "Provision the Azure Static Web App that hosts the admin portal SPA."
+  type        = bool
+  default     = false
+}
+
+variable "admin_static_web_app_location" {
+  description = "Azure Static Web Apps deployment region. This is separate from the primary workload region because service availability differs."
+  type        = string
+  default     = "eastasia"
+}
+
+variable "admin_static_web_app_sku_tier" {
+  description = "Azure Static Web Apps plan. Use Free for development and Standard when production requires an SLA or network restrictions."
+  type        = string
+  default     = "Free"
+
+  validation {
+    condition     = contains(["Free", "Standard"], var.admin_static_web_app_sku_tier)
+    error_message = "admin_static_web_app_sku_tier must be Free or Standard."
+  }
 }
 
 variable "enable_azure_openai" {
@@ -391,22 +457,42 @@ variable "azure_openai_embedding_capacity" {
 }
 
 variable "enable_content_safety" {
-  type    = bool
-  default = false
+  description = "Provision Azure AI Content Safety for Core worker consumption. Enabled by default for the standard chat platform."
+  type        = bool
+  default     = true
+}
+
+variable "enable_malware_scanning" {
+  description = "Enable Defender for Storage on-upload malware scanning and blob-index result tags. Required for downloadable user uploads."
+  type        = bool
+  default     = true
+}
+
+variable "malware_scanning_monthly_cap_gb" {
+  description = "Maximum monthly GB scanned by Defender for Storage on-upload malware scanning."
+  type        = number
+  default     = 100
+
+  validation {
+    condition     = var.malware_scanning_monthly_cap_gb >= 1
+    error_message = "malware_scanning_monthly_cap_gb must be at least 1."
+  }
 }
 
 variable "enable_signalr" {
-  type    = bool
-  default = false
+  description = "Provision Azure SignalR for managed realtime delivery. Enabled by default for the standard chat platform."
+  type        = bool
+  default     = true
 }
 
 variable "enable_notification_hubs" {
-  type    = bool
-  default = false
+  description = "Provision Notification Hubs resources and a send-only backend authorization rule. Enabled by default; APNS/FCM provider credentials are configured separately and never enter Terraform."
+  type        = bool
+  default     = true
 }
 
 variable "enable_service_bus" {
-  description = "Provision Service Bus Standard only when asynchronous messaging is being tested."
+  description = "Provision the Core integration topology and dedicated Core worker. Enabled by default for the standard chat platform."
   type        = bool
-  default     = false
+  default     = true
 }

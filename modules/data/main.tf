@@ -226,7 +226,7 @@ resource "azapi_resource" "identity_protection_master_key" {
 resource "azurerm_storage_account" "this" {
   name                            = "stolga${var.suffix}"
   resource_group_name             = var.resource_group_name
-  location                        = var.location
+  location                        = var.storage_location
   account_tier                    = "Standard"
   account_replication_type        = var.environment == "prod" ? "ZRS" : "LRS"
   min_tls_version                 = "TLS1_2"
@@ -252,8 +252,25 @@ resource "azapi_update_resource" "blob_service" {
   }
 }
 
+resource "azurerm_security_center_storage_defender" "this" {
+  count = var.enable_malware_scanning ? 1 : 0
+
+  storage_account_id                          = azurerm_storage_account.this.id
+  override_subscription_settings_enabled      = true
+  malware_scanning_on_upload_enabled          = true
+  malware_scanning_on_upload_cap_gb_per_month = var.malware_scanning_monthly_cap_gb
+  sensitive_data_discovery_enabled            = false
+}
+
 resource "azapi_resource" "container" {
-  for_each = toset(["chat-files", "verification-evidence", "privacy-exports", "evaluation-reports"])
+  for_each = toset([
+    "chat-files",
+    "verification-evidence",
+    "privacy-exports",
+    "evaluation-reports",
+    "profile-images-pending",
+    "profile-images",
+  ])
 
   type      = "Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01"
   parent_id = azapi_update_resource.blob_service.id
@@ -263,6 +280,44 @@ resource "azapi_resource" "container" {
       publicAccess = "None"
     }
   }
+}
+
+resource "azurerm_storage_management_policy" "profile_images" {
+  storage_account_id = azurerm_storage_account.this.id
+
+  rule {
+    name    = "delete-pending-profile-images"
+    enabled = true
+
+    filters {
+      prefix_match = ["profile-images-pending/"]
+      blob_types   = ["blockBlob"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 3
+      }
+    }
+  }
+
+  rule {
+    name    = "delete-replaced-profile-images"
+    enabled = true
+
+    filters {
+      prefix_match = ["profile-images/replaced/"]
+      blob_types   = ["blockBlob"]
+    }
+
+    actions {
+      base_blob {
+        delete_after_days_since_modification_greater_than = 30
+      }
+    }
+  }
+
+  depends_on = [azapi_resource.container]
 }
 
 resource "azurerm_private_dns_zone" "blob" {
@@ -311,11 +366,66 @@ resource "azurerm_servicebus_namespace" "this" {
   tags                = var.tags
 }
 
+resource "azurerm_servicebus_topic" "integration_events" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name                                    = "integration-events"
+  namespace_id                            = azurerm_servicebus_namespace.this[0].id
+  default_message_ttl                     = "P7D"
+  support_ordering                        = true
+  requires_duplicate_detection            = true
+  duplicate_detection_history_time_window = "PT1H"
+}
+
+resource "azurerm_servicebus_subscription" "core_nlp_completions" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name                                 = "core-nlp-completions"
+  topic_id                             = azurerm_servicebus_topic.integration_events[0].id
+  max_delivery_count                   = 5
+  lock_duration                        = "PT1M"
+  default_message_ttl                  = "P7D"
+  dead_lettering_on_message_expiration = true
+}
+
+resource "azurerm_servicebus_subscription_rule" "core_nlp_completions" {
+  count = var.enable_service_bus ? 1 : 0
+
+  name            = "nlp-match-request-completed-v1"
+  subscription_id = azurerm_servicebus_subscription.core_nlp_completions[0].id
+  filter_type     = "SqlFilter"
+  sql_filter      = "event_type = 'NlpMatchRequestCompleted.v1'"
+}
+
+# Azure creates a catch-all $Default rule with every subscription. Remove only
+# that generated rule after the selective rule exists, otherwise every event is
+# still delivered and the SQL filter above has no effect.
+resource "terraform_data" "remove_core_nlp_completions_default_rule" {
+  count = var.enable_service_bus ? 1 : 0
+
+  triggers_replace = [
+    azurerm_servicebus_subscription_rule.core_nlp_completions[0].id,
+  ]
+
+  provisioner "local-exec" {
+    interpreter = ["/bin/bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      default_rule_url="https://management.azure.com${azurerm_servicebus_subscription.core_nlp_completions[0].id}/rules/%24Default?api-version=2024-01-01"
+
+      if az rest --method get --url "$default_rule_url" --only-show-errors >/dev/null 2>&1; then
+        az rest --method delete --url "$default_rule_url" --only-show-errors >/dev/null
+      fi
+    EOT
+  }
+}
+
 resource "azurerm_servicebus_queue" "work" {
-  for_each = var.enable_service_bus ? toset(["embedding", "content-scan", "notification", "privacy-retention", "outbox"]) : toset([])
+  for_each = var.enable_service_bus ? toset(["content-scan"]) : toset([])
 
   name                                    = each.value
   namespace_id                            = azurerm_servicebus_namespace.this[0].id
+  default_message_ttl                     = "P1D"
   max_delivery_count                      = 5
   lock_duration                           = "PT1M"
   dead_lettering_on_message_expiration    = true
@@ -325,9 +435,10 @@ resource "azurerm_servicebus_queue" "work" {
 
 locals {
   application_principals = {
-    core   = var.core_identity_principal_id
-    nlp    = var.nlp_identity_principal_id
-    worker = var.worker_identity_principal_id
+    core        = var.core_identity_principal_id
+    nlp         = var.nlp_identity_principal_id
+    worker      = var.worker_identity_principal_id
+    core_worker = var.core_worker_identity_principal_id
   }
   key_vault_principals = merge(local.application_principals, {
     database_migration = var.database_migration_identity_principal_id
@@ -344,7 +455,11 @@ resource "azurerm_role_assignment" "key_vault_secrets_user" {
 }
 
 resource "azurerm_role_assignment" "blob_data_contributor" {
-  for_each = local.application_principals
+  for_each = {
+    core   = var.core_identity_principal_id
+    nlp    = var.nlp_identity_principal_id
+    worker = var.worker_identity_principal_id
+  }
 
   scope                            = azurerm_storage_account.this.id
   role_definition_name             = "Storage Blob Data Contributor"
@@ -352,20 +467,47 @@ resource "azurerm_role_assignment" "blob_data_contributor" {
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "servicebus_data_sender" {
-  for_each = var.enable_service_bus ? local.application_principals : {}
+resource "azurerm_role_assignment" "core_worker_blob_data_contributor" {
+  for_each = toset(["profile-images-pending", "profile-images", "chat-files"])
 
-  scope                            = azurerm_servicebus_namespace.this[0].id
-  role_definition_name             = "Azure Service Bus Data Sender"
-  principal_id                     = each.value
+  scope                            = azapi_resource.container[each.value].id
+  role_definition_name             = "Storage Blob Data Contributor"
+  principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }
 
-resource "azurerm_role_assignment" "servicebus_data_receiver" {
-  for_each = var.enable_service_bus ? toset([var.nlp_identity_principal_id, var.worker_identity_principal_id]) : toset([])
+resource "azurerm_role_assignment" "core_worker_integration_sender" {
+  count = var.enable_service_bus ? 1 : 0
 
-  scope                            = azurerm_servicebus_namespace.this[0].id
+  scope                            = azurerm_servicebus_topic.integration_events[0].id
+  role_definition_name             = "Azure Service Bus Data Sender"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_nlp_completion_receiver" {
+  count = var.enable_service_bus ? 1 : 0
+
+  scope                            = azurerm_servicebus_subscription.core_nlp_completions[0].id
   role_definition_name             = "Azure Service Bus Data Receiver"
-  principal_id                     = each.value
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_content_scan_sender" {
+  count = var.enable_service_bus ? 1 : 0
+
+  scope                            = azurerm_servicebus_queue.work["content-scan"].id
+  role_definition_name             = "Azure Service Bus Data Sender"
+  principal_id                     = var.core_worker_identity_principal_id
+  skip_service_principal_aad_check = true
+}
+
+resource "azurerm_role_assignment" "core_worker_content_scan_receiver" {
+  count = var.enable_service_bus ? 1 : 0
+
+  scope                            = azurerm_servicebus_queue.work["content-scan"].id
+  role_definition_name             = "Azure Service Bus Data Receiver"
+  principal_id                     = var.core_worker_identity_principal_id
   skip_service_principal_aad_check = true
 }

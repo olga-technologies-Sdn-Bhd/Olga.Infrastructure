@@ -56,6 +56,13 @@ resource "azurerm_user_assigned_identity" "worker" {
   tags                = var.tags
 }
 
+resource "azurerm_user_assigned_identity" "core_worker" {
+  name                = "id-olga-core-worker-${var.environment}"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  tags                = var.tags
+}
+
 resource "azurerm_user_assigned_identity" "database_migration" {
   name                = "id-olga-database-migration-${var.environment}"
   resource_group_name = azurerm_resource_group.this.name

@@ -159,6 +159,10 @@ jobs:
       TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
       TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
       TF_VAR_external_identity: ${{ vars.EXTERNAL_IDENTITY }}
+      TF_VAR_enable_admin_static_web_app: "true"
+      TF_VAR_admin_static_web_app_location: eastasia
+      TF_VAR_admin_static_web_app_sku_tier: ${{ needs.quality.outputs.environment == 'prd' && 'Standard' || 'Free' }}
+      TF_VAR_core_authentication_enforced: ${{ vars.CORE_AUTHENTICATION_ENFORCED || 'false' }}
     outputs:
       has_changes: ${{ steps.summary.outputs.has_changes }}
     steps:
@@ -188,7 +192,7 @@ jobs:
           done
 
       - name: Sign in to Azure with OIDC
-        uses: Azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -287,7 +291,7 @@ jobs:
           rm -f "$RUNNER_TEMP/tfplan.json"
 
       - name: Upload saved plan
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: terraform-plan-${{ needs.quality.outputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan/
@@ -347,7 +351,7 @@ jobs:
           done
 
       - name: Sign in to Azure with OIDC
-        uses: Azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -364,7 +368,7 @@ jobs:
             -backend-config="use_azuread_auth=true"
 
       - name: Download saved plan
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: terraform-plan-${{ needs.quality.outputs.environment }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: plan
@@ -428,11 +432,15 @@ jobs:
           nlp_subject=$(terraform output -raw nlp_deployment_oidc_subject)
           database_client_id=$(terraform output -raw database_deployment_identity_client_id)
           database_subject=$(terraform output -raw database_deployment_oidc_subject)
+          core_worker_name=$(terraform output -json core_worker_container_app_name | jq -r '. // "disabled"')
+          core_worker_identity=$(terraform output -raw core_worker_identity_client_id)
           {
             echo
             echo "### Application GitHub OIDC"
             echo "- Core \`AZURE_CLIENT_ID\`: \`$core_client_id\`"
             echo "- Core subject: \`$core_subject\`"
+            echo "- Core worker Container App: \`$core_worker_name\`"
+            echo "- Core worker managed identity client ID: \`$core_worker_identity\`"
             echo "- NLP \`AZURE_CLIENT_ID\`: \`$nlp_client_id\`"
             echo "- NLP subject: \`$nlp_subject\`"
             echo "- Database \`AZURE_CLIENT_ID\`: \`$database_client_id\`"

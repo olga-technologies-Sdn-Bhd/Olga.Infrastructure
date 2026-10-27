@@ -1,5 +1,6 @@
 variable "resource_group_name" { type = string }
 variable "location" { type = string }
+variable "storage_location" { type = string }
 variable "environment" { type = string }
 variable "suffix" { type = string }
 variable "tags" { type = map(string) }
@@ -36,7 +37,10 @@ variable "postgres_firewall_rules" {
   default = {}
 }
 variable "enable_service_bus" { type = bool }
+variable "enable_malware_scanning" { type = bool }
+variable "malware_scanning_monthly_cap_gb" { type = number }
 variable "core_identity_principal_id" { type = string }
 variable "nlp_identity_principal_id" { type = string }
 variable "worker_identity_principal_id" { type = string }
+variable "core_worker_identity_principal_id" { type = string }
 variable "database_migration_identity_principal_id" { type = string }
