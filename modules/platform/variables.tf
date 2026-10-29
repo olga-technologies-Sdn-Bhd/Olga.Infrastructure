@@ -18,6 +18,16 @@ variable "service_token_secret_uri" { type = string }
 variable "identity_master_key_secret_uri" { type = string }
 variable "key_vault_id" { type = string }
 variable "key_vault_uri" { type = string }
+variable "twilio_verify" {
+  type = object({
+    enabled              = bool
+    account_sid          = optional(string)
+    api_key_sid          = optional(string)
+    verify_service_sid   = optional(string)
+    default_country_code = string
+    token_ttl_seconds    = number
+  })
+}
 variable "storage_blob_endpoint" { type = string }
 variable "servicebus_fully_qualified_namespace" {
   type     = string

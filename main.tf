@@ -220,6 +220,7 @@ module "platform" {
   external_identity_issuer                 = "https://${var.external_identity.tenant_id}.ciamlogin.com/${var.external_identity.tenant_id}/v2.0"
   external_identity_required_scope         = "access_as_user"
   external_identity_required_roles         = var.external_identity_required_roles
+  twilio_verify                            = var.twilio_verify
   core_authentication_enforced             = var.core_authentication_enforced
   nlp_application_delivery_enabled         = local.nlp_delivery_enabled
   nlp_worker_application_delivery_enabled  = var.nlp_worker_application_delivery_enabled

@@ -159,6 +159,7 @@ jobs:
       TF_VAR_budget_amount_usd: ${{ vars.BUDGET_AMOUNT_USD }}
       TF_VAR_budget_alert_emails: ${{ vars.BUDGET_ALERT_EMAILS }}
       TF_VAR_external_identity: ${{ vars.EXTERNAL_IDENTITY }}
+      TF_VAR_twilio_verify: ${{ vars.TWILIO_VERIFY || '{"enabled":false,"account_sid":null,"api_key_sid":null,"verify_service_sid":null,"default_country_code":"MY","token_ttl_seconds":300}' }}
       TF_VAR_enable_admin_static_web_app: "true"
       TF_VAR_admin_static_web_app_location: eastasia
       TF_VAR_admin_static_web_app_sku_tier: ${{ needs.quality.outputs.environment == 'prd' && 'Standard' || 'Free' }}
@@ -190,6 +191,21 @@ jobs:
               exit 1
             fi
           done
+          jq -e '
+            type == "object" and
+            ((keys - ["enabled", "account_sid", "api_key_sid", "verify_service_sid", "default_country_code", "token_ttl_seconds"]) | length == 0) and
+            (.enabled | type == "boolean") and
+            (.default_country_code | type == "string") and
+            (.token_ttl_seconds | type == "number") and
+            (if .enabled then
+              (.account_sid | type == "string") and
+              (.api_key_sid | type == "string") and
+              (.verify_service_sid | type == "string")
+            else true end)
+          ' <<<"$TF_VAR_twilio_verify" >/dev/null || {
+            echo "::error::TWILIO_VERIFY must be a valid non-secret Twilio Verify configuration object."
+            exit 1
+          }
 
       - name: Sign in to Azure with OIDC
         uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0

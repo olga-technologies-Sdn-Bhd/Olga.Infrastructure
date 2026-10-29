@@ -2,7 +2,7 @@
 
 Terraform project for isolated OLGA Connect development and production environments. GitHub uses `dev` and `prd`; Terraform retains its established internal values `dev` and `prod`.
 
-GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). The Core worker, chat messaging, realtime, push, credential handoff, and configuration matrix are in [docs/CORE_CHAT_INFRASTRUCTURE.md](docs/CORE_CHAT_INFRASTRUCTURE.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), the independent Apple federation workflow is documented in [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md), and the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
+GitHub Actions validation, planning, deployment, environment setup, and incident guidance are documented in [docs/TERRAFORM_CI_CD.md](docs/TERRAFORM_CI_CD.md). The Core worker, chat messaging, realtime, push, credential handoff, and configuration matrix are in [docs/CORE_CHAT_INFRASTRUCTURE.md](docs/CORE_CHAT_INFRASTRUCTURE.md). Microsoft Entra External ID Email OTP and Google setup is documented in [docs/ENTRA_EXTERNAL_ID.md](docs/ENTRA_EXTERNAL_ID.md), the independent Apple federation workflow is documented in [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md), Twilio Verify phone authentication is documented in [docs/TWILIO_VERIFY.md](docs/TWILIO_VERIFY.md), and the mobile integration steps are in [docs/MOBILE_ENTRA_EXTERNAL_ID.md](docs/MOBILE_ENTRA_EXTERNAL_ID.md), with the accepted temporary unauthenticated-API risk in [docs/SECURITY_DEBT.md](docs/SECURITY_DEBT.md).
 
 ## Provisioned baseline
 
@@ -17,6 +17,7 @@ GitHub Actions validation, planning, deployment, environment setup, and incident
 - Always-on NLP PostgreSQL polling worker with managed-identity access to ACR, Key Vault, and Azure OpenAI
 - Dedicated Core outbox/completion/content-scan worker with its own managed identity when Service Bus is enabled
 - Standard chat services using Service Bus, SignalR, Notification Hubs, and Content Safety, plus Defender for Storage on-upload malware scanning in supported Storage regions; optional Azure OpenAI, API Management, and Static Web Apps
+- Optional Twilio Verify SMS configuration for Core using externally provisioned, versionless Key Vault secret references
 
 ## Prerequisites
 
@@ -35,6 +36,8 @@ For local deployment, create `olga-connect-dev.auto.tfvars` with the required no
 External tenant creation is included in `bootstrap/external-tenant`. The manual **External ID - Plan Initial Dev Tenant Creation** workflow performs a guarded plan; Microsoft requires the initial tenant creation apply to use a delegated user token, so that one-time apply runs locally. After the tenant exists, the protected **External ID - Configure Google Provider** workflow uses an environment-specific GitHub OIDC application to create or rotate the Google provider and associate it with the existing customer user flow through Microsoft Graph. It verifies that Email OTP remains associated and does not run Terraform or modify the existing applications, service principals, owners, attributes, or native-authentication settings. The Google secret is read only from the matching GitHub Environment secret and never enters Terraform. Production uses an independent tenant, OIDC identity, Google credential, and GitHub Environment configuration.
 
 The separate protected **External ID - Configure Apple Provider** workflow creates or rotates only Apple and adds it to that environment's existing customer user flow. It records and verifies preservation of every current provider association, consumes the `.p8` key only from the matching GitHub Environment secret, and does not rerun or depend on Google. Dev and prd use independent Apple Service IDs and signing credentials; see [docs/APPLE_EXTERNAL_ID.md](docs/APPLE_EXTERNAL_ID.md).
+
+Twilio Verify is disabled by default. Before enabling it in dev, store the API key secret and OLGA signing key as protected secrets in the `dev` GitHub Environment and run **Twilio Verify - Configure Key Vault Credentials** from `develop`. The workflow writes new versions under the two exact Key Vault names documented in [docs/TWILIO_VERIFY.md](docs/TWILIO_VERIFY.md) without printing or passing their values to Terraform. Then set the non-secret Account SID, API Key SID, Verify Service SID, and runtime settings in the `TWILIO_VERIFY` JSON object in the `dev-plan` GitHub Environment. Terraform never accepts or creates secret credential values.
 
 ```powershell
 .\scripts\bootstrap-state.ps1 `
@@ -120,7 +123,9 @@ Changing the already-created dev server from delegated-subnet networking to this
 
 ## Mobile identity boundary
 
-Microsoft Entra External ID owns Email OTP, Google and Apple federation, and mobile token issuance. Independent provider workflows associate Google and Apple with the existing user flow through Microsoft Graph. Terraform does not store the Google client secret, Apple private key, OTPs, access tokens, refresh tokens, authorization codes, customer identities, or Microsoft Graph credentials.
+Microsoft Entra External ID continues to own Email OTP, Google and Apple federation, and the tokens issued for those methods. Twilio Verify owns SMS OTP generation, delivery, and verification only. OLGA Core owns phone-identity linking and issues the separate OLGA access and refresh tokens after successful phone possession verification. Terraform does not store provider credentials, OTPs, access tokens, refresh tokens, authorization codes, or customer identities.
+
+Phone authentication is not complete in infrastructure alone. The Core application must implement the versioned send/check endpoints, idempotency, throttling, Twilio calls, phone-identity linking, and OLGA token issuance. The database repository must add the reviewed migrations for normalized phone identities and refresh-token/session persistence before the feature is exposed to customers.
 
 ### React Native / Expo authentication handoff
 
