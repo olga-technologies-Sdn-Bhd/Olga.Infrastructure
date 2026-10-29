@@ -3,6 +3,16 @@ locals {
   # Keep the primary workload there and place only these unsupported services in
   # the nearest shared supported Azure region.
   chat_auxiliary_location = var.location == "malaysiawest" ? "southeastasia" : var.location
+  twilio_core_secrets = var.twilio_verify.enabled ? {
+    twilio-api-key-secret = {
+      key_vault_name = "twilio-api-key-secret"
+      env_name       = "Twilio__ApiKeySecret"
+    }
+    phone-auth-jwt-signing-key = {
+      key_vault_name = "phone-auth-jwt-signing-key"
+      env_name       = "PhoneAuthentication__SigningKey"
+    }
+  } : {}
 }
 
 resource "azurerm_container_app_environment" "this" {
@@ -166,6 +176,15 @@ resource "azurerm_container_app" "core_api" {
     identity            = var.core_identity_id
   }
 
+  dynamic "secret" {
+    for_each = local.twilio_core_secrets
+    content {
+      name                = secret.key
+      key_vault_secret_id = "${var.key_vault_uri}secrets/${secret.value.key_vault_name}"
+      identity            = var.core_identity_id
+    }
+  }
+
   dynamic "registry" {
     for_each = var.core_application_delivery_enabled ? [1] : []
     content {
@@ -271,6 +290,53 @@ resource "azurerm_container_app" "core_api" {
       env {
         name  = "Authentication__RequireAuthenticatedUsers"
         value = tostring(var.core_authentication_enforced)
+      }
+      env {
+        name  = "Twilio__Enabled"
+        value = tostring(var.twilio_verify.enabled)
+      }
+      env {
+        name  = "Twilio__AccountSid"
+        value = coalesce(var.twilio_verify.account_sid, "")
+      }
+      env {
+        name  = "Twilio__ApiKeySid"
+        value = coalesce(var.twilio_verify.api_key_sid, "")
+      }
+      env {
+        name  = "Twilio__VerifyServiceSid"
+        value = coalesce(var.twilio_verify.verify_service_sid, "")
+      }
+      env {
+        name  = "Twilio__DefaultCountryCode"
+        value = var.twilio_verify.default_country_code
+      }
+      env {
+        name  = "Twilio__TokenTtlSeconds"
+        value = tostring(var.twilio_verify.token_ttl_seconds)
+      }
+      env {
+        name  = "PhoneAuthentication__Issuer"
+        value = "olga-phone-auth-${var.environment}"
+      }
+      env {
+        name  = "PhoneAuthentication__Audience"
+        value = "olga-mobile-${var.environment}"
+      }
+      env {
+        name  = "PhoneAuthentication__AccessTokenMinutes"
+        value = "15"
+      }
+      env {
+        name  = "PhoneAuthentication__RefreshTokenDays"
+        value = "30"
+      }
+      dynamic "env" {
+        for_each = local.twilio_core_secrets
+        content {
+          name        = env.value.env_name
+          secret_name = env.key
+        }
       }
       env {
         name  = "Mvp__AllowInsecureMemberHeader"

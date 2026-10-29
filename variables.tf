@@ -65,6 +65,56 @@ variable "external_identity" {
   }
 }
 
+variable "twilio_verify" {
+  description = "Non-secret Twilio Verify configuration. Credentials are provisioned out-of-band in Key Vault before this feature is enabled."
+  type = object({
+    enabled              = optional(bool, false)
+    account_sid          = optional(string)
+    api_key_sid          = optional(string)
+    verify_service_sid   = optional(string)
+    default_country_code = optional(string, "MY")
+    token_ttl_seconds    = optional(number, 300)
+  })
+  default = {}
+
+  validation {
+    condition = (
+      var.twilio_verify.account_sid == null
+      ? !var.twilio_verify.enabled
+      : can(regex("^AC[0-9a-fA-F]{32}$", var.twilio_verify.account_sid))
+    )
+    error_message = "twilio_verify.account_sid is required when enabled and, when set, must be a valid AC-prefixed Twilio Account SID."
+  }
+
+  validation {
+    condition = (
+      var.twilio_verify.api_key_sid == null
+      ? !var.twilio_verify.enabled
+      : can(regex("^SK[0-9a-fA-F]{32}$", var.twilio_verify.api_key_sid))
+    )
+    error_message = "twilio_verify.api_key_sid is required when enabled and, when set, must be a valid SK-prefixed Twilio API Key SID."
+  }
+
+  validation {
+    condition = (
+      var.twilio_verify.verify_service_sid == null
+      ? !var.twilio_verify.enabled
+      : can(regex("^VA[0-9a-fA-F]{32}$", var.twilio_verify.verify_service_sid))
+    )
+    error_message = "twilio_verify.verify_service_sid is required when enabled and, when set, must be a valid VA-prefixed Twilio Verify Service SID."
+  }
+
+  validation {
+    condition     = can(regex("^[A-Z]{2}$", var.twilio_verify.default_country_code))
+    error_message = "twilio_verify.default_country_code must be a two-letter uppercase ISO country code."
+  }
+
+  validation {
+    condition     = var.twilio_verify.token_ttl_seconds >= 120 && var.twilio_verify.token_ttl_seconds <= 86400
+    error_message = "twilio_verify.token_ttl_seconds must be between 120 and 86400 seconds."
+  }
+}
+
 variable "owner" {
   type = string
 }
