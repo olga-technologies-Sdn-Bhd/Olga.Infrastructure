@@ -394,7 +394,8 @@ resource "azurerm_servicebus_subscription_rule" "core_nlp_completions" {
   name            = "nlp-match-request-completed-v1"
   subscription_id = azurerm_servicebus_subscription.core_nlp_completions[0].id
   filter_type     = "SqlFilter"
-  sql_filter      = "event_type = 'NlpMatchRequestCompleted.v1'"
+  # Reuse the existing Core integration subscription; no SCI-specific entity is needed.
+  sql_filter = "event_type IN ('NlpMatchRequestCompleted.v1', 'NlpIntentMatchReady.v1', 'SciLinkScoreChanged.v1')"
 }
 
 # Azure creates a catch-all $Default rule with every subscription. Remove only
