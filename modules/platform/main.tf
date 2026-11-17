@@ -932,7 +932,7 @@ resource "azurerm_notification_hub_namespace" "this" {
   resource_group_name = var.resource_group_name
   location            = local.chat_auxiliary_location
   namespace_type      = "NotificationHub"
-  sku_name            = var.environment == "prod" ? "Standard" : "Free"
+  sku_name            = var.environment == "prod" ? "Basic" : "Free"
   tags                = var.tags
 }
 
