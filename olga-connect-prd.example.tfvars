@@ -27,6 +27,7 @@ nlp_api_min_replicas                    = 2
 postgres_prod_sku_name                     = "GP_Standard_D2ds_v5"
 postgres_prod_storage_mb                   = 131072
 postgres_prod_geo_redundant_backup_enabled = false
+postgres_prod_high_availability_enabled    = false
 
 # Service Bus and the Core worker are required for production. SignalR and
 # Notification Hubs stay off until their application integrations are released;

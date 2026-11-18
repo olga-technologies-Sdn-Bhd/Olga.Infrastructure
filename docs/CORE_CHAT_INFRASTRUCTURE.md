@@ -82,7 +82,7 @@ The infrastructure boundary for the non-Phase-2 chat backlog is covered as follo
 | CHAT-09 privacy and access control | External ID settings, fail-closed production gate, private PostgreSQL/Blob access, HTTPS ingress, managed identities, Key Vault references, and scoped new RBAC are provided. Existing broad Blob assignments remain documented security debt. |
 | CHAT-10 offline delivery and retries | Durable Service Bus entities, duplicate detection, dead-lettering, a dedicated worker, minimum production replicas, diagnostics, and backlog/dead-letter alerts are provided. Client queueing and cursor recovery remain application responsibilities. |
 | CHAT-11 account deletion and retention | The Core worker supplies execution capacity. A privacy-retention queue is intentionally absent until a real consumer exists; the current design may use PostgreSQL background jobs instead. |
-| CHAT-12 history on a new device | Private PostgreSQL, production zone-redundant high availability, 35-day backups, and durable API hosting are provided. Restore policy and cursor synchronization remain application responsibilities. |
+| CHAT-12 history on a new device | Private PostgreSQL, 35-day production backups, optional production zone-redundant high availability, and durable API hosting are provided. Restore policy and cursor synchronization remain application responsibilities. |
 | CHAT-13 failed-message and retry states | Service Bus retry/dead-letter infrastructure is provided for backend events. User-visible retry state belongs to Core and mobile clients. |
 | CHAT-14 basic chat interface | No additional Azure infrastructure is required. |
 

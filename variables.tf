@@ -130,13 +130,20 @@ variable "expiry_date" {
 }
 
 variable "budget_amount_usd" {
-  type    = number
-  default = 50
+  description = "Optional monthly resource-group budget override. Defaults to USD 150 for dev and USD 700 for prod."
+  type        = number
+  default     = null
+
+  validation {
+    condition     = var.budget_amount_usd == null ? true : var.budget_amount_usd > 0
+    error_message = "budget_amount_usd must be greater than zero when provided."
+  }
 }
 
 variable "budget_alert_emails" {
-  type    = list(string)
-  default = []
+  description = "Email recipients for dev and prod resource-group budget alerts and production operational alerts."
+  type        = list(string)
+  default     = ["sreedharan@ol-ga.com"]
 }
 
 variable "postgres_admin_username" {
@@ -185,6 +192,12 @@ variable "postgres_prod_storage_mb" {
 
 variable "postgres_prod_geo_redundant_backup_enabled" {
   description = "Enable geo-redundant PostgreSQL backups in production only when the selected Azure region supports them. Malaysia West does not currently support this capability."
+  type        = bool
+  default     = false
+}
+
+variable "postgres_prod_high_availability_enabled" {
+  description = "Provision a zone-redundant PostgreSQL standby in production. Disabled by default for the MVP cost baseline."
   type        = bool
   default     = false
 }

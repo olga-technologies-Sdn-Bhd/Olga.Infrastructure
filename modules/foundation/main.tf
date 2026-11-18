@@ -193,6 +193,14 @@ resource "azurerm_consumption_budget_resource_group" "this" {
     }
   }
 
+  notification {
+    enabled        = true
+    threshold      = 100
+    operator       = "GreaterThanOrEqualTo"
+    threshold_type = "Forecasted"
+    contact_emails = var.budget_alert_emails
+  }
+
   lifecycle {
     # Azure treats the budget start date as immutable. Set it on creation, then
     # retain it so timestamp() does not cause a replacement on every later plan.

@@ -30,7 +30,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
   tags                          = var.tags
 
   dynamic "high_availability" {
-    for_each = var.environment == "prod" ? [1] : []
+    for_each = var.postgres_high_availability_enabled ? [1] : []
     content {
       mode = "ZoneRedundant"
     }

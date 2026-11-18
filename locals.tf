@@ -8,6 +8,7 @@ locals {
   database_deploy_oidc_subject = "repo:${var.github_organization_subject}/${var.database_github_repository_subject}:environment:${local.github_environment}"
   core_delivery_enabled        = var.use_acr_images || var.core_application_delivery_enabled
   nlp_delivery_enabled         = var.use_acr_images || var.nlp_application_delivery_enabled
+  budget_amount_usd            = var.budget_amount_usd != null ? var.budget_amount_usd : (var.environment == "prod" ? 700 : 150)
   core_api_min_replicas        = var.core_api_min_replicas != null ? var.core_api_min_replicas : (var.environment == "prod" ? 2 : 1)
   core_worker_min_replicas     = var.core_worker_min_replicas != null ? var.core_worker_min_replicas : (var.environment == "prod" ? 2 : 1)
   nlp_api_min_replicas         = var.nlp_api_min_replicas != null ? var.nlp_api_min_replicas : (var.environment == "prod" ? 2 : 0)
