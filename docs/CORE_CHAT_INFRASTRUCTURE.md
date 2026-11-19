@@ -58,7 +58,7 @@ The Core deployment identity has `Container Apps Contributor` only on the Core A
 - Development Core API remains scale-to-zero by default. The first request after idle may wait for Container Apps cold start plus application/database initialization.
 - When Service Bus is enabled, the Core worker defaults to one development replica so PostgreSQL outbox polling continues. Setting it to zero is allowed only in development and intentionally pauses outbox, completion, and scan processing until a replica is started.
 - Production requires at least two Core API replicas, two Core worker replicas, and Service Bus. The worker uses process health as its liveness signal: an unhandled startup/runtime failure exits the process and Container Apps restarts it. The current worker exposes no HTTP health endpoint.
-- Production alerts cover API/worker replica loss, Service Bus backlog and dead letters, SignalR system errors/server connections, Notification Hubs failures/invalid tokens, and PostgreSQL CPU/memory/storage pressure.
+- Production alerts cover API/worker replica loss, Service Bus backlog and dead letters, SignalR system errors/server connections plus 70% warning and 85% critical connection-capacity thresholds, Notification Hubs failures/invalid tokens, and PostgreSQL CPU/memory/storage pressure.
 - A database-outbox age/count alert requires the Core worker to emit an Application Insights metric. Azure Monitor cannot query an application table with a native resource metric; add that metric in Core before claiming outbox-backlog monitoring is complete.
 
 ## Authentication release status

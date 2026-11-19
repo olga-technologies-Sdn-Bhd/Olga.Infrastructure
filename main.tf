@@ -547,6 +547,40 @@ resource "azurerm_monitor_metric_alert" "signalr_server_connections" {
   }
 }
 
+resource "azurerm_monitor_metric_alert" "signalr_connection_capacity" {
+  for_each = var.environment == "prod" && var.enable_signalr ? {
+    warning = {
+      threshold = 70
+      severity  = 2
+    }
+    critical = {
+      threshold = 85
+      severity  = 1
+    }
+  } : {}
+
+  name                = "alert-olga-prod-signalr-capacity-${each.key}"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [module.platform.signalr_service_id]
+  description         = "Azure SignalR connection quota utilization is at least ${each.value.threshold} percent."
+  severity            = each.value.severity
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.SignalRService/SignalR"
+    metric_name      = "ConnectionQuotaUtilization"
+    aggregation      = "Maximum"
+    operator         = "GreaterThanOrEqualTo"
+    threshold        = each.value.threshold
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
+}
+
 resource "azurerm_monitor_metric_alert" "notification_failures" {
   for_each = var.environment == "prod" && var.enable_notification_hubs ? {
     failed         = "incoming.all.failedrequests"
