@@ -572,7 +572,7 @@ resource "azurerm_monitor_metric_alert" "signalr_connection_capacity" {
     metric_namespace = "Microsoft.SignalRService/SignalR"
     metric_name      = "ConnectionQuotaUtilization"
     aggregation      = "Maximum"
-    operator         = "GreaterThanOrEqualTo"
+    operator         = "GreaterThanOrEqual"
     threshold        = each.value.threshold
   }
 
