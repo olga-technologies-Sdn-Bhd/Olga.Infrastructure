@@ -6,7 +6,7 @@ module "foundation" {
   environment                  = var.environment
   suffix                       = local.suffix
   tags                         = local.tags
-  budget_amount_usd            = var.budget_amount_usd
+  budget_amount_usd            = local.budget_amount_usd
   budget_alert_emails          = var.budget_alert_emails
   expiry_date                  = var.expiry_date
   core_deploy_oidc_subject     = local.core_deploy_oidc_subject
@@ -151,6 +151,7 @@ module "data" {
   postgres_sku_name                        = var.environment == "prod" ? var.postgres_prod_sku_name : var.postgres_sku_name
   postgres_storage_mb                      = var.environment == "prod" ? var.postgres_prod_storage_mb : var.postgres_storage_mb
   postgres_geo_redundant_backup_enabled    = var.environment == "prod" && var.postgres_prod_geo_redundant_backup_enabled
+  postgres_high_availability_enabled       = var.environment == "prod" && var.postgres_prod_high_availability_enabled
   postgres_allowed_extensions              = var.postgres_allowed_extensions
   postgres_entra_admin                     = try(local.postgres_access.entra_admin, null)
   postgres_firewall_rules                  = try(local.postgres_access.firewall_rules, {})
@@ -539,6 +540,40 @@ resource "azurerm_monitor_metric_alert" "signalr_server_connections" {
     aggregation      = "Average"
     operator         = "LessThan"
     threshold        = 1
+  }
+
+  action {
+    action_group_id = azurerm_monitor_action_group.production[0].id
+  }
+}
+
+resource "azurerm_monitor_metric_alert" "signalr_connection_capacity" {
+  for_each = var.environment == "prod" && var.enable_signalr ? {
+    warning = {
+      threshold = 70
+      severity  = 2
+    }
+    critical = {
+      threshold = 85
+      severity  = 1
+    }
+  } : {}
+
+  name                = "alert-olga-prod-signalr-capacity-${each.key}"
+  resource_group_name = module.foundation.resource_group_name
+  scopes              = [module.platform.signalr_service_id]
+  description         = "Azure SignalR connection quota utilization is at least ${each.value.threshold} percent."
+  severity            = each.value.severity
+  frequency           = "PT5M"
+  window_size         = "PT15M"
+  tags                = local.tags
+
+  criteria {
+    metric_namespace = "Microsoft.SignalRService/SignalR"
+    metric_name      = "ConnectionQuotaUtilization"
+    aggregation      = "Maximum"
+    operator         = "GreaterThanOrEqualTo"
+    threshold        = each.value.threshold
   }
 
   action {

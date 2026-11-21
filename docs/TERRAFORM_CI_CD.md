@@ -39,13 +39,13 @@ Configure these environment-scoped variables in every matching plan/apply enviro
 | `OWNER` | Resource owner tag, such as `olga-platform` |
 | `COST_CENTER` | Cost allocation tag, such as `olga-connect` |
 | `EXPIRY_DATE` | Review/expiry date in `YYYY-MM-DD` format |
-| `BUDGET_AMOUNT_USD` | Monthly Azure budget amount, `50` for dev |
-| `BUDGET_ALERT_EMAILS` | Terraform list value, for example `["sreedharan@ol-ga.com"]` |
 | `EXTERNAL_IDENTITY` | Non-secret object containing the matching external tenant ID/subdomain/domain, redirect URI, mobile client ID, and API client ID |
 | `TWILIO_VERIFY` | Optional non-secret Twilio Verify object containing the `AC...` Account SID, `SK...` API Key SID, `VA...` Verify Service SID, country, and TTL. Omit to keep the feature disabled. |
 | `CORE_AUTHENTICATION_ENFORCED` | Optional application enforcement signal. It defaults to `false` and does not block production infrastructure deployment. Set it to `true` only when the deployed Core image enforces External ID and disables MVP identity shortcuts. |
 
 Terraform enables Service Bus, SignalR, Notification Hubs, and Content Safety by default. It also selects one Core worker replica in dev and two in prd. No GitHub variables are required for those platform settings.
+
+Terraform owns the monthly resource-group budget configuration: USD 150 for dev, USD 700 for prd, and the alert recipients declared by `budget_alert_emails`. Both environments notify at 50%, 80%, and 100% of actual spend and at 100% of forecasted spend. The optional `budget_amount_usd` Terraform input can override the source-controlled baseline for an exceptional deployment. No GitHub Environment budget variables are required.
 
 The plan workflow maps these GitHub Environment variables to Terraform `TF_VAR_*` inputs. `TWILIO_VERIFY` maps to `TF_VAR_twilio_verify` and defaults to a disabled object when the variable is absent. Because the saved plan is the applied artifact, configure the dev value in `dev-plan`. Twilio credential values are permitted only in the two specifically named protected secrets in the `dev` or `prd` apply Environment; never place them in plan environments, GitHub variables, workflow inputs, repository variables, tfvars, or artifacts. Add future non-secret Terraform inputs the same way. Never store client secrets, storage keys, passwords, state, saved plans, or sensitive tfvars as GitHub variables.
 
